@@ -12,6 +12,10 @@ temporal:
 prometheus:
   serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
 
+# Every workload below is scaled by a KEDA ScaledObject and nothing else — no
+# Deployment in this chart sets `replicas`. Handlers scale on Temporal task
+# queue backlog; HTTP services scale on Traefik ingress req/s.
+
 worker:
   name: poc-worker
   # Slow activity + low concurrency so a burst builds a visible backlog.
@@ -38,3 +42,37 @@ api:
     cooldownPeriod: 60
     # requests/sec per replica (measured by Traefik at the ingress)
     requestsPerSecond: "1"
+
+# Nexus demo: caller and handler in separate Temporal namespaces, connected
+# only by the endpoint name.
+nexus:
+  enabled: true
+  endpoint: greet-endpoint
+  handlerNamespace: poc
+  handlerTaskQueue: poc-nexus-queue
+  callerNamespace: caller
+  callerTaskQueue: caller-task-queue
+  worker:
+    name: nexus-worker
+    scaling:
+      # Cannot be zero. Temporal exposes backlog only for workflow/activity
+      # task types, never nexus — so a Nexus request arriving at a zero-replica
+      # handler creates no visible backlog, never wakes it, and times out.
+      # Above 1 it still scales on the workflows those operations start.
+      minReplicas: 1
+      maxReplicas: 4
+      pollingInterval: 15
+      cooldownPeriod: 60
+      targetQueueSize: 5
+      activationTargetQueueSize: 0
+
+  api:
+    name: nexus-api
+    port: 8000
+    host: nexus.127.0.0.1.sslip.io
+    scaling:
+      minReplicas: 1
+      maxReplicas: 4
+      pollingInterval: 15
+      cooldownPeriod: 60
+      requestsPerSecond: "1"

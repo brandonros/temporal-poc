@@ -16,7 +16,7 @@ metadata:
   labels:
     app: {{ .Values.api.name }}
 spec:
-  replicas: {{ .Values.api.scaling.minReplicas }}
+  # replicas intentionally unset: KEDA owns it.
   selector:
     matchLabels:
       app: {{ .Values.api.name }}
@@ -116,26 +116,8 @@ spec:
                 port:
                   number: {{ .Values.api.port }}
 ---
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: {{ .Values.api.name }}
-  namespace: {{ .Release.Namespace }}
-spec:
-  scaleTargetRef:
-    name: {{ .Values.api.name }}
-  pollingInterval: {{ .Values.api.scaling.pollingInterval }}
-  cooldownPeriod: {{ .Values.api.scaling.cooldownPeriod }}
-  minReplicaCount: {{ .Values.api.scaling.minReplicas }}
-  maxReplicaCount: {{ .Values.api.scaling.maxReplicas }}
-  triggers:
-    - type: prometheus
-      metadata:
-        serverAddress: {{ .Values.prometheus.serverAddress | quote }}
-        threshold: {{ .Values.api.scaling.requestsPerSecond | quote }}
-        # Requests/sec as observed by Traefik at the ingress — no application
-        # instrumentation involved. Traefik labels each backend
-        # <namespace>-<service>-<port>@kubernetes.
-        query: >-
-          sum(rate(traefik_service_requests_total{service="{{ .Release.Namespace }}-{{ .Values.api.name }}-{{ .Values.api.port }}@kubernetes"}[1m]))
-        ignoreNullValues: "true"
+{{- include "scalingdemo.scaledobject" (dict
+      "name" .Values.api.name "ns" .Release.Namespace
+      "s" .Values.api.scaling "kind" "traefik"
+      "prom" .Values.prometheus.serverAddress
+      "port" .Values.api.port) }}

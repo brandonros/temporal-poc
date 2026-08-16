@@ -58,6 +58,9 @@ server:
           retention: 3d
         - name: poc
           retention: 7d
+        # Nexus caller lives here: it reaches `poc` only via the endpoint name.
+        - name: caller
+          retention: 7d
 
   metrics:
     annotations:

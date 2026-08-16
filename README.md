@@ -125,22 +125,109 @@ deploy without starting from a fresh cluster. Decide now, not later.
 second errors out. Both triggers therefore live in a single ScaledObject, and
 KEDA scales to the highest count any trigger requests.
 
+## The demo apps
+
+Two Python apps in [charts/scaling-demo/apps/](charts/scaling-demo/apps/), mounted
+into stock `python:3.12-slim` pods from ConfigMaps — no image build, no registry,
+no CI. `pip install` runs at container start (~30s), which is the tradeoff.
+
+- **`poc-worker`** — Temporal worker running `GreetWorkflow`. The activity sleeps
+  5s with `max_concurrent_activities: 2`, so a burst builds a visible backlog.
+- **`poc-api`** — aiohttp facade. `POST /greet` starts the workflow **by name**
+  (so it shares no code with the worker), waits for the result, and returns it.
+
+```bash
+curl -X POST http://api.127.0.0.1.sslip.io/greet \
+  -H 'Content-Type: application/json' -d '{"name":"brandon"}'
+# {"message":"Hello, brandon!","workflow_id":"greet-...","seconds":5.11}
+```
+
+Editing a `.py` file re-renders the ConfigMap, and a `checksum/src` pod annotation
+forces the rollout — a ConfigMap change alone would not restart the pods.
+
+## Nexus
+
+A second pair of apps demonstrating cross-namespace calls. Same ConfigMap
+pattern, deliberately separate from the direct-call pair above.
+
+- **`nexus-worker`** (handler) — Temporal namespace `poc`, task queue
+  `poc-nexus-queue`. Serves `GreetService` via `nexus_service_handlers`, and
+  self-registers the Nexus Endpoint on startup.
+- **`nexus-api`** (caller) — Temporal namespace `caller`. One process running
+  both an aiohttp server and a worker for `CallerWorkflow`, because Nexus
+  operations are invoked from workflows, not plain clients.
+
+```bash
+curl -X POST http://nexus.127.0.0.1.sslip.io/greet \
+  -H 'Content-Type: application/json' -d '{"name":"brandon"}'
+# {"message":"Hello, brandon!","via":"nexus endpoint 'greet-endpoint'",
+#  "caller_namespace":"caller","seconds":5.23}
+```
+
+The point: `nexus-api` references only the endpoint *name*. It never names
+`poc` or `poc-nexus-queue` — contrast `poc-api`, which must pass
+`task_queue="poc-task-queue"` on every call.
+
+**Server config needed: none.** Nexus is on by default in server 1.31
+(`system.enableNexus`), `httpPort: 7243` is already set, and the system callback
+URL is the default.
+
+**Registration is runtime state, not chart config.** The Temporal chart has no
+Nexus support, so `nexus-worker` registers the endpoint itself via
+`operator_service.create_nexus_endpoint`. Two things make that safe:
+
+- `CreateNexusEndpoint` is **not** idempotent — it fails `ALREADY_EXISTS`. The
+  handler lists by name first and also catches the conflict, since check-then-act
+  can lose a race. Verified: a 0→5 scale-out produced one `registered` and four
+  `already registered`, zero restarts.
+- A pre-existing endpoint pointing at the wrong task queue routes into a black
+  hole, so a target mismatch triggers `update_nexus_endpoint` rather than being
+  silently accepted.
+
+Nexus also has a plain HTTP surface on `:7243` for non-Temporal callers, at
+`/nexus/endpoints/{endpoint-UUID}/services/{Service}/{Operation}` — note it takes
+the endpoint **UUID**, not its name.
+
 ## The two KEDA triggers
 
-Both are in [charts/scaling-demo/templates/scaledobject.yaml](charts/scaling-demo/templates/scaledobject.yaml).
+**A ScaledObject is the only way a Deployment gets replicas in this chart.** No
+Deployment sets `replicas` — if it did, every `helm upgrade` would reset the
+count and fight the HPA. All four are rendered from one template,
+`scalingdemo.scaledobject` in `templates/_helpers.tpl`, with exactly two trigger
+shapes: handlers scale on task-queue backlog, HTTP services on ingress req/s.
 
-1. **`temporal`** — reads the task-queue backlog directly from the Temporal
-   frontend at `temporal-frontend.temporal.svc.cluster.local:7233`. Scales to
-   roughly `backlog / targetQueueSize`. Needs KEDA ≥ 2.17. For Temporal Cloud,
-   add a `TriggerAuthentication` exposing an `apiKey` parameter.
-2. **`prometheus`** — a PromQL query against
-   `kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090`, watching
-   p95 activity schedule-to-start latency. That series exists only because
-   `server.metrics.serviceMonitor.enabled: true` is set in the Temporal values.
+| Workload | Trigger | Signal | Range |
+|---|---|---|---|
+| `poc-worker` | `temporal` | task-queue backlog | 0–6 |
+| `poc-api` | `prometheus` | Traefik ingress req/s | 1–5 |
+| `nexus-worker` | `temporal` | task-queue backlog | 1–4 |
+| `nexus-api` | `prometheus` | Traefik ingress req/s | 1–4 |
 
-`minReplicaCount: 0` means scale-to-zero is on; `activationThreshold` /
-`activationTargetQueueSize` control the wake-from-zero decision separately from
-the scaling threshold.
+Only `poc-worker` can reach zero. `nexus-worker` cannot: `DescribeTaskQueue`
+reports backlog for `workflow` and `activity` task types only — there is no
+`nexus` type, and KEDA's scaler accepts neither. A Nexus request hitting a
+zero-replica handler would create no visible backlog, never wake it, and time
+out. Above 1 the trigger still works, because the operations start real
+workflows on that queue. HTTP services can't reach zero either, since they have
+to be up to receive the request that creates the work.
+
+**`temporal`** reads backlog straight from the frontend over gRPC and scales to
+roughly `backlog / targetQueueSize`. Needs KEDA ≥ 2.17. Note the field is
+`queueTypes` (plural, comma-separated) — `queueType` is silently ignored and
+falls back to workflow-only. For Temporal Cloud, add a `TriggerAuthentication`
+with an `apiKey` parameter.
+
+**`prometheus`** queries `traefik_service_requests_total`, which k3s's Traefik
+already emits (`--metrics.prometheus=true` on a `metrics` entrypoint) — it just
+needed the PodMonitor in `values/kube-prometheus-stack.yaml`. **The API needs no
+instrumentation to be autoscaled.** Traefik labels backends
+`<namespace>-<service>-<port>@kubernetes`.
+
+The worker runs `minReplicaCount: 0`; the API cannot, since it has to be up to
+receive the request that creates the work. Verified end to end: a cold `POST
+/greet` against a zero-replica worker took 28s (KEDA scale-up + `pip install`),
+then 5.1s warm. A 40-request burst drove the worker 0→5→0 with 42/42 workflows
+completing, and 90s of sustained traffic drove the API 1→5 at 2.6 req/s/replica.
 
 ## Before you call it production
 

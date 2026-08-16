@@ -16,7 +16,7 @@ metadata:
   labels:
     app: {{ .Values.worker.name }}
 spec:
-  replicas: {{ .Values.worker.scaling.minReplicas }}
+  # replicas intentionally unset: KEDA owns it.
   selector:
     matchLabels:
       app: {{ .Values.worker.name }}
@@ -58,29 +58,9 @@ spec:
           configMap:
             name: {{ .Values.worker.name }}-src
 ---
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: {{ .Values.worker.name }}
-  namespace: {{ .Release.Namespace }}
-spec:
-  scaleTargetRef:
-    name: {{ .Values.worker.name }}
-  pollingInterval: {{ .Values.worker.scaling.pollingInterval }}
-  cooldownPeriod: {{ .Values.worker.scaling.cooldownPeriod }}
-  minReplicaCount: {{ .Values.worker.scaling.minReplicas }}
-  maxReplicaCount: {{ .Values.worker.scaling.maxReplicas }}
-  advanced:
-    horizontalPodAutoscalerConfig:
-      behavior:
-        scaleDown:
-          stabilizationWindowSeconds: 60
-  triggers:
-    - type: temporal
-      metadata:
-        endpoint: {{ .Values.temporal.endpoint | quote }}
-        namespace: {{ .Values.temporal.namespace | quote }}
-        taskQueue: {{ .Values.temporal.taskQueue | quote }}
-        targetQueueSize: {{ .Values.worker.scaling.targetQueueSize | quote }}
-        activationTargetQueueSize: {{ .Values.worker.scaling.activationTargetQueueSize | quote }}
-        queueTypes: "workflow,activity"
+{{- include "scalingdemo.scaledobject" (dict
+      "name" .Values.worker.name "ns" .Release.Namespace
+      "s" .Values.worker.scaling "kind" "temporal"
+      "endpoint" .Values.temporal.endpoint
+      "tns" .Values.temporal.namespace
+      "queue" .Values.temporal.taskQueue) }}
