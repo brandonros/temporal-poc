@@ -1,10 +1,14 @@
 """Thin HTTP facade over Temporal.
 
 POST /greet {"name": "..."}  -> starts GreetWorkflow, waits for the result,
-returns it. Exposes /metrics so the KEDA prometheus trigger has a real signal
-to scale this deployment on.
+returns it.
 
 The workflow is started by name, so this service shares no code with the worker.
+
+/metrics is scraped by the ServiceMonitor for observability only. KEDA does not
+read it: the ScaledObject queries Traefik's `traefik_service_requests_total`, so
+this deployment would autoscale identically with none of the instrumentation
+below.
 """
 import asyncio
 import logging

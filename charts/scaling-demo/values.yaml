@@ -12,9 +12,8 @@ temporal:
 prometheus:
   serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
 
-# Every workload below is scaled by a KEDA ScaledObject and nothing else — no
-# Deployment in this chart sets `replicas`. Handlers scale on Temporal task
-# queue backlog; HTTP services scale on Traefik ingress req/s.
+# Handlers scale on Temporal task-queue backlog, HTTP services on Traefik
+# ingress req/s. See templates/_helpers.tpl for why KEDA owns replicas outright.
 
 worker:
   name: poc-worker

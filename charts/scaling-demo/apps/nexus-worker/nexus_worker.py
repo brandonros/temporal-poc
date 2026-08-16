@@ -83,7 +83,11 @@ class GreetServiceHandler:
 
 
 async def ensure_endpoint(client: Client) -> None:
-    """Idempotent self-registration. See worker.py for the race notes."""
+    """Register the endpoint, tolerating other replicas doing the same.
+
+    CreateNexusEndpoint is not idempotent — it fails ALREADY_EXISTS — and
+    check-then-act can lose the race, so the conflict is caught as well.
+    """
     ops = client.service_client.operator_service
     existing = await ops.list_nexus_endpoints(
         operator.ListNexusEndpointsRequest(name=ENDPOINT)

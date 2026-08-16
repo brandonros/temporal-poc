@@ -1,5 +1,5 @@
 apiVersion: v2
 name: scaling-demo
-description: Demo Temporal worker plus KEDA ScaledObjects (prometheus + temporal triggers)
+description: Temporal workers and HTTP APIs (direct + Nexus), each autoscaled by KEDA
 type: application
 version: 0.1.0

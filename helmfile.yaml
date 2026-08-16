@@ -1,10 +1,9 @@
 ---
 # k3s PoC infrastructure stack. See README.md.
 #
-# Every release carries disableValidationOnInstall: true. helmfile diffs all
-# releases up front, before `needs:` installs anything, so on a first apply the
-# CRDs for ServiceMonitor / ScaledObject / Cluster don't exist yet and the diff
-# would fail. It only relaxes the diff preview; the install still validates.
+# disableValidationOnInstall is on every release because helmfile diffs them all
+# before `needs:` installs anything, so on a first apply the CRDs don't exist yet
+# and the diff fails. It relaxes the preview only; the install still validates.
 
 repositories:
   - name: prometheus-community

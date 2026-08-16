@@ -5,8 +5,6 @@ with [helmfile](https://helmfile.readthedocs.io/).
 
 ## Versions
 
-All pinned versions were verified against the live chart repos.
-
 | Component | Chart | Chart version | App version |
 |---|---|---|---|
 | Prometheus/Grafana/Alertmanager | `prometheus-community/kube-prometheus-stack` | `88.3.0` | `v0.93.0` |
@@ -35,7 +33,8 @@ values/
   postgres-cluster.yaml           # the Postgres 18 cluster itself
   temporal.yaml                   # points Temporal at the CNPG cluster
 charts/
-  scaling-demo/                   # demo worker + KEDA ScaledObject
+  scaling-demo/                   # the four demo workloads + their ScaledObjects
+    apps/                         # their Python source, mounted from ConfigMaps
 ```
 
 The operator and the cluster are two separate charts on purpose: CloudNativePG
@@ -59,7 +58,7 @@ helmfile apply     # converge
 ```
 
 Order enforced by `needs:` — monitoring → KEDA / CNPG operator → Postgres cluster
-→ Temporal → ScaledObjects.
+→ Temporal → the demo chart.
 
 Tear down with `helmfile destroy`. Note that CNPG PVCs and the CRDs
 (`helm.sh/resource-policy: keep`) survive on purpose; delete them by hand if you
@@ -120,16 +119,11 @@ it into the ConfigMap.
 **`numHistoryShards: 512` is immutable.** It cannot be changed after the first
 deploy without starting from a fresh cluster. Decide now, not later.
 
-**One ScaledObject per target.** KEDA permits only one ScaledObject per
-`scaleTargetRef` — two objects on the same Deployment fight over one HPA and the
-second errors out. Both triggers therefore live in a single ScaledObject, and
-KEDA scales to the highest count any trigger requests.
-
 ## The demo apps
 
-Two Python apps in [charts/scaling-demo/apps/](charts/scaling-demo/apps/), mounted
-into stock `python:3.12-slim` pods from ConfigMaps — no image build, no registry,
-no CI. `pip install` runs at container start (~30s), which is the tradeoff.
+Two of the four Python apps in [charts/scaling-demo/apps/](charts/scaling-demo/apps/),
+mounted into stock `python:3.12-slim` pods from ConfigMaps — no image build, no
+registry, no CI. `pip install` runs at container start (~30-45s), the tradeoff.
 
 - **`poc-worker`** — Temporal worker running `GreetWorkflow`. The activity sleeps
   5s with `max_concurrent_activities: 2`, so a burst builds a visible backlog.
@@ -161,7 +155,8 @@ pattern, deliberately separate from the direct-call pair above.
 curl -X POST http://nexus.127.0.0.1.sslip.io/greet \
   -H 'Content-Type: application/json' -d '{"name":"brandon"}'
 # {"message":"Hello, brandon!","via":"nexus endpoint 'greet-endpoint'",
-#  "caller_namespace":"caller","seconds":5.23}
+#  "mode":"workflow-backed (2 workflows)","caller_namespace":"caller",
+#  "workflow_id":"caller-...","seconds":5.23}
 ```
 
 The point: `nexus-api` references only the endpoint *name*. It never names
@@ -203,8 +198,8 @@ Nexus support, so `nexus-worker` registers the endpoint itself via
 
 - `CreateNexusEndpoint` is **not** idempotent — it fails `ALREADY_EXISTS`. The
   handler lists by name first and also catches the conflict, since check-then-act
-  can lose a race. Verified: a 0→5 scale-out produced one `registered` and four
-  `already registered`, zero restarts.
+  can lose a race. Verified on a scale-out: one replica logged `registered`, the
+  rest `already registered`, zero restarts.
 - A pre-existing endpoint pointing at the wrong task queue routes into a black
   hole, so a target mismatch triggers `update_nexus_endpoint` rather than being
   silently accepted.
@@ -220,6 +215,9 @@ Deployment sets `replicas` — if it did, every `helm upgrade` would reset the
 count and fight the HPA. All four are rendered from one template,
 `scalingdemo.scaledobject` in `templates/_helpers.tpl`, with exactly two trigger
 shapes: handlers scale on task-queue backlog, HTTP services on ingress req/s.
+One ScaledObject per workload, one trigger each — KEDA permits only one
+ScaledObject per `scaleTargetRef`, and a second on the same Deployment fights
+over the one HPA and errors out.
 
 | Workload | Trigger | Signal | Range |
 |---|---|---|---|
@@ -229,12 +227,12 @@ shapes: handlers scale on task-queue backlog, HTTP services on ingress req/s.
 | `nexus-api` | `prometheus` | Traefik ingress req/s | 1–4 |
 
 Only `poc-worker` can reach zero. `nexus-worker` cannot: `DescribeTaskQueue`
-reports backlog for `workflow` and `activity` task types only — there is no
-`nexus` type, and KEDA's scaler accepts neither. A Nexus request hitting a
-zero-replica handler would create no visible backlog, never wake it, and time
-out. Above 1 the trigger still works, because the operations start real
-workflows on that queue. HTTP services can't reach zero either, since they have
-to be up to receive the request that creates the work.
+reports backlog for the `workflow` and `activity` task types only — there is no
+`nexus` type to ask for, and KEDA's scaler wouldn't accept one. A Nexus request
+hitting a zero-replica handler would create no visible backlog, never wake it,
+and time out. Above 1 the trigger still works, because the operations start real
+workflows on that queue. The HTTP services can't reach zero either, since they
+have to be up to receive the request that creates the work.
 
 **`temporal`** reads backlog straight from the frontend over gRPC and scales to
 roughly `backlog / targetQueueSize`. Needs KEDA ≥ 2.17. Note the field is
@@ -248,11 +246,10 @@ needed the PodMonitor in `values/kube-prometheus-stack.yaml`. **The API needs no
 instrumentation to be autoscaled.** Traefik labels backends
 `<namespace>-<service>-<port>@kubernetes`.
 
-The worker runs `minReplicaCount: 0`; the API cannot, since it has to be up to
-receive the request that creates the work. Verified end to end: a cold `POST
-/greet` against a zero-replica worker took 28s (KEDA scale-up + `pip install`),
-then 5.1s warm. A 40-request burst drove the worker 0→5→0 with 42/42 workflows
-completing, and 90s of sustained traffic drove the API 1→5 at 2.6 req/s/replica.
+Verified end to end: a cold `POST /greet` against a zero-replica worker took 28s
+(KEDA scale-up + `pip install`), then 5.1s warm. A 40-request burst drove the
+worker 0→5→0 with 42/42 workflows completing, and 90s of sustained traffic drove
+the API 1→5 at 2.6 req/s/replica.
 
 ## Before you call it production
 
@@ -260,12 +257,16 @@ completing, and 90s of sustained traffic drove the API 1→5 at 2.6 req/s/replic
   point at an existing Secret.
 - Temporal runs with TLS and authz off, which is fine inside the cluster but
   means anyone with pod network access can drive workflows.
-- The demo worker in `charts/scaling-demo` is an `alpine` container that sleeps.
-  Swap in a real worker image and set `worker.command`.
-- Everything is sized for a **single 3.8Gi / 4 CPU node** (~2.0Gi of memory
-  requests, leaving ~1.9Gi headroom for KEDA to scale into). On real hardware,
-  raise `cluster.instances` to 3, Prometheus retention back to 15d, and the
-  per-service Temporal requests.
+- The demo apps ship their source in ConfigMaps and `pip install` at container
+  start. That is fine for a PoC and wrong for production: build images, pin the
+  dependencies in the image, and drop the `checksum/src` annotation.
+- Memory requests are tight. The values here declare **~3.9Gi of requests with
+  every workload at its minimum** (`poc-worker` at zero), before the chart
+  defaults for prometheus-operator, node-exporter, kube-state-metrics and the
+  KEDA webhooks, and before anything scales out. A 4Gi node does not fit this;
+  give it 8Gi, or trim the Prometheus and Temporal history requests.
+- On real hardware, raise `cluster.instances` to 3 and the per-service Temporal
+  requests, and give Prometheus more than 20Gi.
 - `backups.enabled: false`. Real backups need the `cnpg/plugin-barman-cloud`
   chart plus an object store.
 
@@ -274,7 +275,7 @@ completing, and 90s of sustained traffic drove the API 1→5 at 2.6 req/s/replic
 ```bash
 kubectl get cluster -n temporal                 # CNPG: expect "Cluster in healthy state"
 kubectl get scaledobject,hpa -n temporal        # KEDA: READY/ACTIVE should be True
-kubectl get ingress -A                          # the four UIs
+kubectl get ingress -A                          # the four UIs + the two demo APIs
 ```
 
 ## UIs
