@@ -12,15 +12,12 @@ aren't obvious are commented where they live, in [values/](values/).
 brew install lima helmfile
 helmfile init                  # installs the helm-diff plugin apply depends on
 
+# at least 8GiB needed
 limactl start --name=k3s --memory=8 template://k3s
 limactl shell k3s sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/config
 
 helmfile apply
 ```
-
-`--memory=8` because the stack requests ~4.2Gi; Lima's 4GiB default won't
-schedule it. The second line **overwrites `~/.kube/config`** — redirect it
-elsewhere and set `KUBECONFIG` if you have other contexts.
 
 The first apply takes a few minutes: charts are pulled cold, and Temporal blocks
 on a hook waiting for Postgres to report Ready before running its schema job.
