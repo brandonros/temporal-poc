@@ -168,6 +168,31 @@ The point: `nexus-api` references only the endpoint *name*. It never names
 `poc` or `poc-nexus-queue` — contrast `poc-api`, which must pass
 `task_queue="poc-task-queue"` on every call.
 
+### Two handler styles on the same endpoint
+
+`GreetService` exposes two operations with identical signatures. A caller cannot
+tell from the contract which is which — that is the abstraction.
+
+| Route | Handler | Workflows/req | Latency |
+|---|---|---|---|
+| `POST /greet` | `@workflow_run_operation` | **2.0** | ~5.2s |
+| `POST /greet-sync` | `@sync_operation` | **1.0** | ~0.2s |
+
+`sync_operation` handles the request inline and starts no workflow — no history,
+nothing to replay. It must return inside a **10-second handler deadline**, which
+is why it does no sleeping while `greet` runs a 5s activity. So the latency
+column is *not* a like-for-like comparison; the useful number in it is that a
+full Nexus round trip costs **~200ms** of overhead.
+
+A `sync_operation` can also use a Temporal Client to Signal, Query, Update, or
+Update-With-Start a workflow. Those stay reliable and synchronous, but they touch
+a workflow, so they cost one execution again.
+
+**Standalone Nexus Operations** — invoked straight from a Client with no caller
+workflow at all — would drop this to 0 workflows for the sync case. That API is
+pre-release and absent from temporalio 1.18.1 (`Client` has no nexus methods),
+so it is not used here.
+
 **Server config needed: none.** Nexus is on by default in server 1.31
 (`system.enableNexus`), `httpPort: 7243` is already set, and the system callback
 URL is the default.

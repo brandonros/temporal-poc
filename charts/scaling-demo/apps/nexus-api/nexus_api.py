@@ -35,10 +35,13 @@ TIMEOUT = float(os.getenv("GREET_TIMEOUT_SECONDS", "180"))
 @nexusrpc.service
 class GreetService:
     greet: nexusrpc.Operation[str, str]
+    greet_sync: nexusrpc.Operation[str, str]
 
 
 @workflow.defn(name="CallerWorkflow")
 class CallerWorkflow:
+    """Calls the workflow-backed operation: 2 workflows total (this + handler)."""
+
     @workflow.run
     async def run(self, name: str) -> str:
         client = workflow.create_nexus_client(service=GreetService, endpoint=ENDPOINT)
@@ -49,7 +52,24 @@ class CallerWorkflow:
         )
 
 
-async def handle_greet(request: web.Request) -> web.Response:
+@workflow.defn(name="CallerSyncWorkflow")
+class CallerSyncWorkflow:
+    """Calls the sync operation: 1 workflow total (this one only).
+
+    Identical caller code -- the only change is which operation is named.
+    """
+
+    @workflow.run
+    async def run(self, name: str) -> str:
+        client = workflow.create_nexus_client(service=GreetService, endpoint=ENDPOINT)
+        return await client.execute_operation(
+            GreetService.greet_sync,
+            name,
+            schedule_to_close_timeout=timedelta(seconds=30),
+        )
+
+
+async def _greet(request: web.Request, wf, prefix: str, mode: str) -> web.Response:
     try:
         body = await request.json()
     except Exception:
@@ -57,13 +77,11 @@ async def handle_greet(request: web.Request) -> web.Response:
     name = body.get("name") or request.query.get("name") or "world"
 
     client: Client = request.app["temporal"]
-    workflow_id = f"caller-{uuid.uuid4().hex[:12]}"
+    workflow_id = f"{prefix}-{uuid.uuid4().hex[:12]}"
     started = time.monotonic()
     try:
         result = await asyncio.wait_for(
-            client.execute_workflow(
-                CallerWorkflow.run, name, id=workflow_id, task_queue=TASK_QUEUE
-            ),
+            client.execute_workflow(wf, name, id=workflow_id, task_queue=TASK_QUEUE),
             timeout=TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -79,11 +97,20 @@ async def handle_greet(request: web.Request) -> web.Response:
         {
             "message": result,
             "via": f"nexus endpoint {ENDPOINT!r}",
+            "mode": mode,
             "caller_namespace": NAMESPACE,
             "workflow_id": workflow_id,
             "seconds": round(time.monotonic() - started, 2),
         }
     )
+
+
+async def handle_greet(request: web.Request) -> web.Response:
+    return await _greet(request, CallerWorkflow.run, "caller", "workflow-backed (2 workflows)")
+
+
+async def handle_greet_sync(request: web.Request) -> web.Response:
+    return await _greet(request, CallerSyncWorkflow.run, "caller-sync", "sync op (1 workflow)")
 
 
 async def handle_health(_: web.Request) -> web.Response:
@@ -95,7 +122,11 @@ async def run_all() -> None:
 
     app = web.Application()
     app["temporal"] = client
-    app.add_routes([web.post("/greet", handle_greet), web.get("/healthz", handle_health)])
+    app.add_routes([
+        web.post("/greet", handle_greet),
+        web.post("/greet-sync", handle_greet_sync),
+        web.get("/healthz", handle_health),
+    ])
 
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
@@ -103,7 +134,9 @@ async def run_all() -> None:
     logging.info("nexus caller up: ns=%s queue=%s endpoint=%s port=%d",
                  NAMESPACE, TASK_QUEUE, ENDPOINT, PORT)
 
-    await Worker(client, task_queue=TASK_QUEUE, workflows=[CallerWorkflow]).run()
+    await Worker(
+        client, task_queue=TASK_QUEUE, workflows=[CallerWorkflow, CallerSyncWorkflow]
+    ).run()
 
 
 if __name__ == "__main__":

@@ -31,9 +31,12 @@ GREET_SECONDS = float(os.getenv("GREET_SECONDS", "5"))
 
 
 # --- the contract, shared by both sides -------------------------------------
+# Two operations, same signature. A caller cannot tell from the contract that
+# one is backed by a workflow and the other isn't -- that's the abstraction.
 @nexusrpc.service
 class GreetService:
     greet: nexusrpc.Operation[str, str]
+    greet_sync: nexusrpc.Operation[str, str]
 
 
 # --- the underlying Temporal primitives it abstracts -------------------------
@@ -57,13 +60,26 @@ class GreetWorkflow:
 class GreetServiceHandler:
     @workflow_run_operation
     async def greet(self, ctx: WorkflowRunOperationContext, name: str):
-        # Returns a handle, not a result: the operation completes asynchronously
-        # when the workflow does, so a slow greet doesn't hold an RPC open.
+        # ASYNC: returns a handle, not a result. The operation completes when
+        # the workflow does, so a slow greet doesn't hold an RPC open.
+        # Cost: one workflow execution per call.
         return await ctx.start_workflow(
             GreetWorkflow.run,
             name,
             id=f"nexus-greet-{uuid.uuid4().hex[:12]}",
         )
+
+    @nexusrpc.handler.sync_operation
+    async def greet_sync(self, ctx: nexusrpc.handler.StartOperationContext, name: str) -> str:
+        # SYNC: handled inline, no workflow started, so no history and nothing
+        # to replay. Must return inside the 10s handler deadline -- which is why
+        # this does no sleeping, unlike the activity behind `greet`.
+        #
+        # A Temporal Client here could instead Signal/Query/Update a workflow,
+        # or Update-With-Start. Those are still reliable and still synchronous,
+        # but they do touch a workflow, so they cost one execution again.
+        logging.info("sync greet for %s (no workflow)", name)
+        return f"Hello, {name}! (sync, no workflow)"
 
 
 async def ensure_endpoint(client: Client) -> None:
