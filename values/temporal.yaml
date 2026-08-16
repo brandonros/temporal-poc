@@ -20,12 +20,15 @@ server:
       datastores:
         default:
           sql:
+            # Correct for Postgres 18: the v12 schema directory covers 12+.
             pluginName: postgres12_pgx
             driverName: postgres12_pgx
             databaseName: temporal
             connectAddr: "temporal-pg-rw.temporal.svc.cluster.local:5432"
             connectProtocol: tcp
             user: temporal
+            # CNPG generates this Secret; the chart injects it as an env var, so
+            # the password is never written into values or the ConfigMap.
             existingSecret: temporal-pg-app
             secretKey: password
             # CNPG creates the databases; the chart only manages schema.

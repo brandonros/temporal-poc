@@ -13,6 +13,8 @@ cluster:
   # Single-node cluster: extra replicas share the node's failure domain.
   instances: 1
 
+  # version.postgresql alone yields the floating tag `postgresql:18`. Pin the
+  # patch so an apply can't move the binary under an existing data directory.
   imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie
 
   storage:

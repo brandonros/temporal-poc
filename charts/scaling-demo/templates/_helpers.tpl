@@ -31,6 +31,8 @@ spec:
           stabilizationWindowSeconds: 60
   triggers:
   {{- if eq .kind "temporal" }}
+    # Reads backlog from the frontend over gRPC; needs KEDA >= 2.17. For
+    # Temporal Cloud, add a TriggerAuthentication with an apiKey parameter.
     - type: temporal
       metadata:
         endpoint: {{ .endpoint | quote }}
@@ -38,8 +40,9 @@ spec:
         taskQueue: {{ .queue | quote }}
         targetQueueSize: {{ .s.targetQueueSize | quote }}
         activationTargetQueueSize: {{ .s.activationTargetQueueSize | quote }}
-        # `nexus` is not a valid value — Temporal exposes backlog only for
-        # these two, which is why Nexus handlers cannot scale from zero.
+        # Plural: the singular `queueType` is silently ignored and falls back to
+        # workflow-only. `nexus` is not a valid value — Temporal exposes backlog
+        # for these two alone, so Nexus handlers cannot scale from zero.
         queueTypes: "workflow,activity"
   {{- else }}
     - type: prometheus
