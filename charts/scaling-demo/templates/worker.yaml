@@ -1,0 +1,36 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.worker.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.worker.name }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.worker.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.worker.name }}
+    spec:
+      containers:
+        - name: worker
+          image: {{ .Values.worker.image }}
+          command:
+            {{- toYaml .Values.worker.command | nindent 12 }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ .Values.temporal.endpoint | quote }}
+            - name: TEMPORAL_NAMESPACE
+              value: {{ .Values.temporal.namespace | quote }}
+            - name: TEMPORAL_TASK_QUEUE
+              value: {{ .Values.temporal.taskQueue | quote }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

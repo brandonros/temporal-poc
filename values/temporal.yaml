@@ -1,0 +1,123 @@
+---
+# Shims target Temporal 1.29 images; server here is 1.31.2.
+shims:
+  dockerize: false
+  elasticsearchTool: false
+
+server:
+  enabled: true
+  replicaCount: 1
+
+  config:
+    logLevel: "info"
+
+    persistence:
+      defaultStore: default
+      visibilityStore: visibility
+      # Immutable after first deploy.
+      numHistoryShards: 512
+
+      datastores:
+        default:
+          sql:
+            pluginName: postgres12_pgx
+            driverName: postgres12_pgx
+            databaseName: temporal
+            connectAddr: "temporal-pg-rw.temporal.svc.cluster.local:5432"
+            connectProtocol: tcp
+            user: temporal
+            existingSecret: temporal-pg-app
+            secretKey: password
+            # CNPG creates the databases; the chart only manages schema.
+            createDatabase: false
+            manageSchema: true
+            maxConns: 30
+            maxIdleConns: 30
+            maxConnLifetime: "1h"
+
+        visibility:
+          sql:
+            pluginName: postgres12_pgx
+            driverName: postgres12_pgx
+            databaseName: temporal_visibility
+            connectAddr: "temporal-pg-rw.temporal.svc.cluster.local:5432"
+            connectProtocol: tcp
+            user: temporal
+            existingSecret: temporal-pg-app
+            secretKey: password
+            createDatabase: false
+            manageSchema: true
+            maxConns: 15
+            maxIdleConns: 15
+            maxConnLifetime: "1h"
+
+    namespaces:
+      create: true
+      namespace:
+        - name: default
+          retention: 3d
+        - name: poc
+          retention: 7d
+
+  metrics:
+    annotations:
+      enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+
+  frontend:
+    enabled: true
+    replicaCount: 1
+    service:
+      type: ClusterIP
+      port: 7233
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+
+  history:
+    enabled: true
+    replicaCount: 1
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+      limits: {memory: 2Gi}
+
+  matching:
+    enabled: true
+    replicaCount: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+
+  worker:
+    enabled: true
+    replicaCount: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+
+web:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: true
+    className: traefik
+    # This chart splits each entry on "/" into host + path.
+    hosts:
+      - temporal.127.0.0.1.sslip.io
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+admintools:
+  enabled: true
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+schema:
+  useHelmHooks: true
+  backoffLimit: 20

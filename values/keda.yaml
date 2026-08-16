@@ -1,0 +1,34 @@
+---
+# Empty = watch all namespaces; ScaledObjects live in `temporal`.
+watchNamespace: ""
+
+operator:
+  replicaCount: 1
+
+resources:
+  operator:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  metricServer:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+prometheus:
+  metricServer:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  operator:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  webhooks:
+    enabled: true
+    serviceMonitor:
+      enabled: true

@@ -1,0 +1,24 @@
+---
+worker:
+  # Not "temporal-worker" — the Temporal chart owns that name in this namespace.
+  name: poc-worker
+  image: alpine:3.22
+  command: ["sh", "-c", "sleep infinity"]
+  replicas: 1
+
+temporal:
+  endpoint: temporal-frontend.temporal.svc.cluster.local:7233
+  namespace: poc
+  taskQueue: poc-task-queue
+
+prometheus:
+  serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+
+scaling:
+  minReplicas: 0
+  maxReplicas: 10
+  pollingInterval: 15
+  cooldownPeriod: 60
+  targetQueueSize: 5
+  activationTargetQueueSize: 0
+  latencyThreshold: "0.5"

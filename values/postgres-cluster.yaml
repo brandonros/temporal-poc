@@ -1,0 +1,53 @@
+---
+# Without this the chart appends "-cluster", renaming the Service and Secret
+# that values/temporal.yaml points at.
+fullnameOverride: temporal-pg
+
+type: postgresql
+mode: standalone
+
+version:
+  postgresql: "18"
+
+cluster:
+  # Single-node cluster: extra replicas share the node's failure domain.
+  instances: 1
+
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie
+
+  storage:
+    size: 20Gi
+    storageClass: local-path
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+  initdb:
+    database: temporal
+    owner: temporal
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: 256MB
+
+  monitoring:
+    enabled: true
+    podMonitor:
+      enabled: true
+
+  primaryUpdateStrategy: unsupervised
+
+# initdb creates `temporal`; Temporal needs a second database too.
+databases:
+  - name: temporal_visibility
+    owner: temporal
+    ensure: present
+    databaseReclaimPolicy: retain
+
+backups:
+  enabled: false

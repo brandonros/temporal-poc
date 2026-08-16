@@ -1,0 +1,20 @@
+---
+replicaCount: 1
+
+crds:
+  create: true
+
+monitoring:
+  podMonitorEnabled: true
+  grafanaDashboard:
+    create: true
+    namespace: monitoring
+    labels:
+      grafana_dashboard: "1"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    memory: 500Mi

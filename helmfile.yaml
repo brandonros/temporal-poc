@@ -1,0 +1,94 @@
+---
+# k3s PoC infrastructure stack. See README.md.
+#
+# Every release carries disableValidationOnInstall: true. helmfile diffs all
+# releases up front, before `needs:` installs anything, so on a first apply the
+# CRDs for ServiceMonitor / ScaledObject / Cluster don't exist yet and the diff
+# would fail. It only relaxes the diff preview; the install still validates.
+
+repositories:
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: kedacore
+    url: https://kedacore.github.io/charts
+  - name: cnpg
+    url: https://cloudnative-pg.github.io/charts
+  - name: temporalio
+    url: https://go.temporal.io/helm-charts
+
+helmDefaults:
+  wait: true
+  waitForJobs: true
+  timeout: 900
+  createNamespace: true
+  atomic: false
+
+releases:
+  - name: kube-prometheus-stack
+    namespace: monitoring
+    chart: prometheus-community/kube-prometheus-stack
+    version: 88.3.0
+    values:
+      - values/kube-prometheus-stack.yaml
+    disableValidationOnInstall: true
+
+  - name: keda
+    namespace: keda
+    chart: kedacore/keda
+    version: 2.20.2
+    values:
+      - values/keda.yaml
+    needs:
+      - monitoring/kube-prometheus-stack
+    disableValidationOnInstall: true
+
+  - name: cnpg-operator
+    namespace: cnpg-system
+    chart: cnpg/cloudnative-pg
+    version: 0.29.0
+    values:
+      - values/cloudnative-pg.yaml
+    needs:
+      - monitoring/kube-prometheus-stack
+    disableValidationOnInstall: true
+
+  - name: temporal-pg
+    namespace: temporal
+    chart: cnpg/cluster
+    version: 0.8.1
+    values:
+      - values/postgres-cluster.yaml
+    needs:
+      - cnpg-system/cnpg-operator
+    disableValidationOnInstall: true
+
+  - name: temporal
+    namespace: temporal
+    chart: temporalio/temporal
+    version: 1.6.0
+    values:
+      - values/temporal.yaml
+    needs:
+      - temporal/temporal-pg
+    disableValidationOnInstall: true
+    hooks:
+      # helm --wait can't track a Cluster CR, so the schema job would otherwise
+      # race Postgres.
+      - events: ["presync"]
+        showlogs: true
+        command: kubectl
+        args:
+          - wait
+          - --for=condition=Ready
+          - cluster.postgresql.cnpg.io/temporal-pg
+          - -n
+          - temporal
+          - --timeout=600s
+
+  - name: scaling-demo
+    namespace: temporal
+    chart: ./charts/scaling-demo
+    needs:
+      - keda/keda
+      - temporal/temporal
+    disableValidationOnInstall: true

@@ -1,0 +1,124 @@
+---
+kubeApiServer:
+  enabled: true
+
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true
+    probes: true
+    resource: true
+    # Chart still defaults to /metrics/resource/v1alpha1, which modern kubelets
+    # removed — it 404s on k3s 1.36.
+    resourcePath: "/metrics/resource"
+
+# k3s runs these in one process and doesn't expose them on the expected ports.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+defaultRules:
+  create: true
+  rules:
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+    etcd: false
+
+prometheus:
+  prometheusSpec:
+    # Default is true, which limits discovery to `release: kube-prometheus-stack`.
+    # Temporal's, KEDA's and CNPG's monitors don't carry that label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+
+    retention: 15d
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+  # *.127.0.0.1.sslip.io resolves to 127.0.0.1 via public DNS — no /etc/hosts.
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - prometheus.127.0.0.1.sslip.io
+    paths:
+      - /
+
+grafana:
+  enabled: true
+  adminPassword: prom-operator
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - grafana.127.0.0.1.sslip.io
+    path: /
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 5Gi
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+alertmanager:
+  enabled: true
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - alertmanager.127.0.0.1.sslip.io
+    paths:
+      - /
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+prometheus-node-exporter:
+  enabled: true
+
+kube-state-metrics:
+  enabled: true

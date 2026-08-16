@@ -1,0 +1,5 @@
+apiVersion: v2
+name: scaling-demo
+description: Demo Temporal worker plus KEDA ScaledObjects (prometheus + temporal triggers)
+type: application
+version: 0.1.0
