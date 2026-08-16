@@ -1,0 +1,141 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.api.name }}-src
+  namespace: {{ .Release.Namespace }}
+data:
+  api.py: |
+{{ .Files.Get "apps/api/api.py" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.api.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.api.name }}
+spec:
+  replicas: {{ .Values.api.scaling.minReplicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.api.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.api.name }}
+      annotations:
+        checksum/src: {{ .Files.Get "apps/api/api.py" | sha256sum }}
+    spec:
+      containers:
+        - name: api
+          image: {{ .Values.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - pip install --no-cache-dir --quiet {{ .Values.pipPackages }} && exec python /app/api.py
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: {{ .Values.temporal.endpoint | quote }}
+            - name: TEMPORAL_NAMESPACE
+              value: {{ .Values.temporal.namespace | quote }}
+            - name: TEMPORAL_TASK_QUEUE
+              value: {{ .Values.temporal.taskQueue | quote }}
+            - name: PORT
+              value: {{ .Values.api.port | quote }}
+            - name: GREET_TIMEOUT_SECONDS
+              value: {{ .Values.api.greetTimeoutSeconds | quote }}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            # pip install runs first; don't fail the pod while it downloads.
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 30
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+      volumes:
+        - name: src
+          configMap:
+            name: {{ .Values.api.name }}-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.api.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.api.name }}
+spec:
+  selector:
+    app: {{ .Values.api.name }}
+  ports:
+    - name: http
+      port: {{ .Values.api.port }}
+      targetPort: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.api.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.api.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.api.name }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.api.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{ .Values.api.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.api.name }}
+                port:
+                  number: {{ .Values.api.port }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Values.api.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    name: {{ .Values.api.name }}
+  pollingInterval: {{ .Values.api.scaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.api.scaling.cooldownPeriod }}
+  minReplicaCount: {{ .Values.api.scaling.minReplicas }}
+  maxReplicaCount: {{ .Values.api.scaling.maxReplicas }}
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ .Values.prometheus.serverAddress | quote }}
+        threshold: {{ .Values.api.scaling.requestsPerSecond | quote }}
+        # Requests/sec as observed by Traefik at the ingress — no application
+        # instrumentation involved. Traefik labels each backend
+        # <namespace>-<service>-<port>@kubernetes.
+        query: >-
+          sum(rate(traefik_service_requests_total{service="{{ .Release.Namespace }}-{{ .Values.api.name }}-{{ .Values.api.port }}@kubernetes"}[1m]))
+        ignoreNullValues: "true"

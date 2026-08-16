@@ -1,4 +1,13 @@
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.worker.name }}-src
+  namespace: {{ .Release.Namespace }}
+data:
+  worker.py: |
+{{ .Files.Get "apps/worker/worker.py" | indent 4 }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,7 +16,7 @@ metadata:
   labels:
     app: {{ .Values.worker.name }}
 spec:
-  replicas: {{ .Values.worker.replicas }}
+  replicas: {{ .Values.worker.scaling.minReplicas }}
   selector:
     matchLabels:
       app: {{ .Values.worker.name }}
@@ -15,12 +24,16 @@ spec:
     metadata:
       labels:
         app: {{ .Values.worker.name }}
+      annotations:
+        # Roll the pods when the source changes; a ConfigMap edit alone won't.
+        checksum/src: {{ .Files.Get "apps/worker/worker.py" | sha256sum }}
     spec:
       containers:
         - name: worker
-          image: {{ .Values.worker.image }}
-          command:
-            {{- toYaml .Values.worker.command | nindent 12 }}
+          image: {{ .Values.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - pip install --no-cache-dir --quiet {{ .Values.pipPackages }} && exec python /app/worker.py
           env:
             - name: TEMPORAL_ADDRESS
               value: {{ .Values.temporal.endpoint | quote }}
@@ -28,9 +41,46 @@ spec:
               value: {{ .Values.temporal.namespace | quote }}
             - name: TEMPORAL_TASK_QUEUE
               value: {{ .Values.temporal.taskQueue | quote }}
+            - name: GREET_SECONDS
+              value: {{ .Values.worker.greetSeconds | quote }}
+            - name: MAX_CONCURRENT_ACTIVITIES
+              value: {{ .Values.worker.maxConcurrentActivities | quote }}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: src
+              mountPath: /app
           resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              memory: 256Mi
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+      volumes:
+        - name: src
+          configMap:
+            name: {{ .Values.worker.name }}-src
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Values.worker.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  scaleTargetRef:
+    name: {{ .Values.worker.name }}
+  pollingInterval: {{ .Values.worker.scaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.worker.scaling.cooldownPeriod }}
+  minReplicaCount: {{ .Values.worker.scaling.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.scaling.maxReplicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+  triggers:
+    - type: temporal
+      metadata:
+        endpoint: {{ .Values.temporal.endpoint | quote }}
+        namespace: {{ .Values.temporal.namespace | quote }}
+        taskQueue: {{ .Values.temporal.taskQueue | quote }}
+        targetQueueSize: {{ .Values.worker.scaling.targetQueueSize | quote }}
+        activationTargetQueueSize: {{ .Values.worker.scaling.activationTargetQueueSize | quote }}
+        queueTypes: "workflow,activity"

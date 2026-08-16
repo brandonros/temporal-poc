@@ -70,6 +70,21 @@ prometheus:
     paths:
       - /
 
+  # k3s already runs Traefik with --metrics.prometheus=true on a `metrics`
+  # entrypoint (:9100), it just wasn't scraped. This gives per-ingress request
+  # rates, so services can be autoscaled without app instrumentation.
+  additionalPodMonitors:
+    - name: traefik
+      podMetricsEndpoints:
+        - port: metrics
+          path: /metrics
+          interval: 15s
+      namespaceSelector:
+        matchNames: ["kube-system"]
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+
 grafana:
   enabled: true
   adminPassword: prom-operator
