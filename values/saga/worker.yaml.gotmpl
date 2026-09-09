@@ -1,0 +1,81 @@
+configMaps:
+  saga-worker:
+    data:
+      worker.py: |
+{{ readFile "../../apps/saga/worker.py" | indent 8 }}
+      order_workflow.py: |
+{{ readFile "../../apps/saga/order_workflow.py" | indent 8 }}
+    forceRename: saga-worker-src
+    includeChecksumInControllers:
+    - saga-worker
+controllers:
+  saga-worker:
+    containers:
+      worker:
+        args:
+        - pip install --no-cache-dir --quiet temporalio==1.18.1 'psycopg[binary]==3.2.10' && exec python
+          /app/worker.py
+        command:
+        - /bin/sh
+        - -c
+        env:
+          PYTHONUNBUFFERED: '1'
+          TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+          TEMPORAL_NAMESPACE: default
+          TEMPORAL_TASK_QUEUE: saga
+          PGHOST: temporal-pg-rw.temporal.svc.cluster.local
+          PGDATABASE: saga
+          PGUSER: temporal
+          PGPASSWORD:
+            valueFrom:
+              secretKeyRef:
+                name: temporal-pg-app
+                key: password
+        image:
+          repository: python
+          tag: 3.12-slim
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+    forceRename: saga-worker
+    replicas: null
+    strategy: RollingUpdate
+persistence:
+  saga-worker:
+    advancedMounts:
+      saga-worker:
+        worker:
+        - path: /app
+          readOnly: true
+    identifier: saga-worker
+    type: configMap
+rawResources:
+  saga-worker:
+    forceRename: saga-worker
+    manifest:
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      spec:
+        advanced:
+          horizontalPodAutoscalerConfig:
+            behavior:
+              scaleDown:
+                stabilizationWindowSeconds: 60
+        cooldownPeriod: 60
+        maxReplicaCount: 6
+        minReplicaCount: 0
+        pollingInterval: 15
+        scaleTargetRef:
+          name: saga-worker
+        triggers:
+        - metadata:
+            activationTargetQueueSize: '0'
+            endpoint: temporal-frontend.temporal.svc.cluster.local:7233
+            namespace: default
+            queueTypes: workflow,activity
+            targetQueueSize: '5'
+            taskQueue: saga
+          type: temporal

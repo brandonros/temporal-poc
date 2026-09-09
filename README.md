@@ -5,13 +5,22 @@ compensation. Helmfile installs Temporal, Postgres, KEDA, and monitoring.
 
 Two examples share the same Temporal server and `default` namespace:
 
-- **Scaling:** an HTTP API starts a slow greeting workflow; KEDA scales its worker
-  from zero as work arrives. This is the deployed example.
-- **Saga:** a local script simulates an order and rolls back partial work. Use it
-  to explore compensation without deploying another app.
+- **Greeter:** an HTTP API starts a slow greeting workflow; KEDA scales its worker
+  from zero as work arrives.
+- **Saga:** an API starts a simulated order; its worker compensates partial work
+  on failure. State lives in Postgres and survives worker restarts.
 
-Python lives in [apps/](apps/). Configuration lives in [values/](values/), with
-chart versions pinned in [helmfile.yaml](helmfile.yaml).
+Each example has an API and worker under `apps/`, with matching app-template values:
+
+```text
+apps/greeter/      values/greeter/
+apps/saga/         values/saga/
+                   values/infra/
+```
+
+Infrastructure values are grouped under `values/infra/`. Chart versions are pinned
+in [helmfile.yaml](helmfile.yaml). Both workers scale on their own task queues;
+both APIs scale on Traefik request rate.
 
 ## Start the stack
 
@@ -27,33 +36,39 @@ The first apply downloads charts and waits for Postgres before running Temporal'
 schema job. `helmfile destroy` removes releases but retains CNPG PVCs and CRDs.
 `limactl delete -f k3s` removes the VM and its data.
 
-## Scaling
+## Greeter
 
 ```bash
-curl -X POST http://api.127.0.0.1.sslip.io/greet \
+curl -X POST http://greeter.127.0.0.1.sslip.io/greet \
   -H 'Content-Type: application/json' -d '{"name":"brandon"}'
 ```
 
-[api.py](apps/scaling/api.py) starts `GreetWorkflow` on the `scaling` task queue.
-[worker.py](apps/scaling/worker.py) processes it with a five-second delay.
+[api.py](apps/greeter/api.py) starts `GreetWorkflow` on the `greeter` task queue.
+[worker.py](apps/greeter/worker.py) processes it with a five-second delay.
 
 | Workload | KEDA trigger | Replicas |
 |---|---|---|
-| `scaling-api` | Traefik request rate | 1–5 |
-| `scaling-worker` | Temporal task-queue backlog | 0–6 |
+| `greeter-api` | Traefik request rate | 1–5 |
+| `greeter-worker` | Temporal task-queue backlog | 0–6 |
 
 The API stays up to accept requests. A cold worker waits for KEDA polling and
 Python dependency installation before processing the queued workflow.
 
-The [app-template values](values/scaling/) are split into API and worker files.
+The [app-template values](values/greeter/) are split into API and worker files.
 Each includes its source ConfigMap and KEDA ScaledObject. `replicas: null` leaves
 scaling to KEDA; source checksums trigger rollouts when Python files change.
 
 ## Saga
 
-See [apps/saga/](apps/saga/README.md) for the runnable order example. It reserves
-inventory, charges a payment, and creates a shipment. Inject a lost response to
-watch the workflow compensate in reverse order.
+```bash
+curl http://saga.127.0.0.1.sslip.io/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"order_id":"demo-001","shipping_fault":"lost_reply"}'
+curl http://saga.127.0.0.1.sslip.io/orders/demo-001
+```
+
+POST returns immediately; GET reports progress and the final compensation state.
+See [apps/saga/](apps/saga/README.md) for the failure modes and storage behavior.
 
 ## UIs
 

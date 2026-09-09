@@ -27,7 +27,7 @@ releases:
     chart: prometheus-community/kube-prometheus-stack
     version: 88.3.0
     values:
-      - values/kube-prometheus-stack.yaml
+      - values/infra/kube-prometheus-stack.yaml
     disableValidationOnInstall: true
 
   - name: keda
@@ -35,7 +35,7 @@ releases:
     chart: kedacore/keda
     version: 2.20.2
     values:
-      - values/keda.yaml
+      - values/infra/keda.yaml
     needs:
       - monitoring/kube-prometheus-stack
     disableValidationOnInstall: true
@@ -45,7 +45,7 @@ releases:
     chart: cnpg/cloudnative-pg
     version: 0.29.0
     values:
-      - values/cloudnative-pg.yaml
+      - values/infra/cloudnative-pg.yaml
     needs:
       - monitoring/kube-prometheus-stack
     disableValidationOnInstall: true
@@ -55,7 +55,7 @@ releases:
     chart: cnpg/cluster
     version: 0.8.1
     values:
-      - values/postgres-cluster.yaml
+      - values/infra/postgres-cluster.yaml
     needs:
       - cnpg-system/cnpg-operator
     disableValidationOnInstall: true
@@ -65,7 +65,7 @@ releases:
     chart: temporalio/temporal
     version: 1.6.0
     values:
-      - values/temporal.yaml
+      - values/infra/temporal.yaml
     needs:
       - temporal/temporal-pg
     disableValidationOnInstall: true
@@ -82,13 +82,25 @@ releases:
           - temporal
           - --timeout=600s
 
-  - name: scaling
+  - name: greeter
     namespace: temporal
     chart: bjw-s-labs/app-template
     version: 5.1.0
     values:
-      - values/scaling/api.yaml.gotmpl
-      - values/scaling/worker.yaml.gotmpl
+      - values/greeter/api.yaml.gotmpl
+      - values/greeter/worker.yaml.gotmpl
+    needs:
+      - keda/keda
+      - temporal/temporal
+    disableValidationOnInstall: true
+
+  - name: saga
+    namespace: temporal
+    chart: bjw-s-labs/app-template
+    version: 5.1.0
+    values:
+      - values/saga/api.yaml.gotmpl
+      - values/saga/worker.yaml.gotmpl
     needs:
       - keda/keda
       - temporal/temporal

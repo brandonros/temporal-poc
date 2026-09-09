@@ -1,13 +1,13 @@
 configMaps:
-  scaling-worker:
+  greeter-worker:
     data:
       worker.py: |
-{{ readFile "../../apps/scaling/worker.py" | indent 8 }}
-    forceRename: scaling-worker-src
+{{ readFile "../../apps/greeter/worker.py" | indent 8 }}
+    forceRename: greeter-worker-src
     includeChecksumInControllers:
-    - scaling-worker
+    - greeter-worker
 controllers:
-  scaling-worker:
+  greeter-worker:
     containers:
       worker:
         args:
@@ -22,7 +22,7 @@ controllers:
           PYTHONUNBUFFERED: '1'
           TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
           TEMPORAL_NAMESPACE: default
-          TEMPORAL_TASK_QUEUE: scaling
+          TEMPORAL_TASK_QUEUE: greeter
         image:
           repository: python
           tag: 3.12-slim
@@ -32,21 +32,21 @@ controllers:
           requests:
             cpu: 50m
             memory: 128Mi
-    forceRename: scaling-worker
+    forceRename: greeter-worker
     replicas: null
     strategy: RollingUpdate
 persistence:
-  scaling-worker:
+  greeter-worker:
     advancedMounts:
-      scaling-worker:
+      greeter-worker:
         worker:
         - path: /app
           readOnly: true
-    identifier: scaling-worker
+    identifier: greeter-worker
     type: configMap
 rawResources:
-  scaling-worker:
-    forceRename: scaling-worker
+  greeter-worker:
+    forceRename: greeter-worker
     manifest:
       apiVersion: keda.sh/v1alpha1
       kind: ScaledObject
@@ -61,7 +61,7 @@ rawResources:
         minReplicaCount: 0
         pollingInterval: 15
         scaleTargetRef:
-          name: scaling-worker
+          name: greeter-worker
         triggers:
         - metadata:
             activationTargetQueueSize: '0'
@@ -69,5 +69,5 @@ rawResources:
             namespace: default
             queueTypes: workflow,activity
             targetQueueSize: '5'
-            taskQueue: scaling
+            taskQueue: greeter
           type: temporal

@@ -10,6 +10,7 @@ from temporalio.exceptions import ActivityError, ApplicationError
 @dataclass
 class Order:
     transaction_id: str
+    shipping_fault: str = ""
     activity_timeout_seconds: float = 30
 
 
@@ -24,7 +25,11 @@ class OrderSaga:
 
     @workflow.run
     async def run(self, order: Order) -> dict:
-        if not order.transaction_id or order.activity_timeout_seconds <= 0:
+        if (
+            not order.transaction_id
+            or order.activity_timeout_seconds <= 0
+            or order.shipping_fault not in ("", "reject", "lost_reply", "timeout")
+        ):
             raise ApplicationError(
                 "Invalid order", type="InvalidOrder", non_retryable=True
             )
@@ -37,7 +42,7 @@ class OrderSaga:
                 compensations.append((service, key))
                 await workflow.execute_activity(
                     f"{service}_forward",
-                    key,
+                    args=[key, order.shipping_fault if service == "shipping" else ""],
                     start_to_close_timeout=timedelta(
                         seconds=order.activity_timeout_seconds
                     ),

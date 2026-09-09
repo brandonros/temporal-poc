@@ -10,7 +10,7 @@ from temporalio.client import Client
 
 ADDRESS = os.getenv("TEMPORAL_ADDRESS", "temporal-frontend.temporal.svc.cluster.local:7233")
 NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
-TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "scaling")
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "greeter")
 PORT = int(os.getenv("PORT", "8000"))
 TIMEOUT = float(os.getenv("GREET_TIMEOUT_SECONDS", "180"))
 

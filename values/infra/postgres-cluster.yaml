@@ -1,5 +1,5 @@
 ---
-# Keep Service and Secret names aligned with values/temporal.yaml.
+# Keep Service and Secret names aligned with temporal.yaml.
 fullnameOverride: temporal-pg
 
 type: postgresql
@@ -44,6 +44,11 @@ cluster:
 # initdb creates `temporal`; Temporal needs a second database too.
 databases:
   - name: temporal_visibility
+    owner: temporal
+    ensure: present
+    databaseReclaimPolicy: retain
+
+  - name: saga
     owner: temporal
     ensure: present
     databaseReclaimPolicy: retain

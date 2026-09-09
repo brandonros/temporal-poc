@@ -1,0 +1,100 @@
+configMaps:
+  saga-api:
+    data:
+      api.py: |
+{{ readFile "../../apps/saga/api.py" | indent 8 }}
+    forceRename: saga-api-src
+    includeChecksumInControllers:
+    - saga-api
+controllers:
+  saga-api:
+    containers:
+      api:
+        args:
+        - pip install --no-cache-dir --quiet temporalio==1.18.1 aiohttp==3.13.2 && exec python /app/api.py
+        command:
+        - /bin/sh
+        - -c
+        env:
+          PORT: '8000'
+          PYTHONUNBUFFERED: '1'
+          TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+          TEMPORAL_NAMESPACE: default
+          TEMPORAL_TASK_QUEUE: saga
+        image:
+          repository: python
+          tag: 3.12-slim
+        probes:
+          readiness:
+            custom: true
+            enabled: true
+            spec:
+              failureThreshold: 30
+              httpGet:
+                path: /healthz
+                port: http
+              initialDelaySeconds: 20
+              periodSeconds: 5
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+    forceRename: saga-api
+    replicas: null
+    strategy: RollingUpdate
+ingress:
+  saga-api:
+    className: traefik
+    forceRename: saga-api
+    hosts:
+    - host: saga.127.0.0.1.sslip.io
+      paths:
+      - path: /
+        pathType: Prefix
+        service:
+          identifier: saga-api
+          port: http
+persistence:
+  saga-api:
+    advancedMounts:
+      saga-api:
+        api:
+        - path: /app
+          readOnly: true
+    identifier: saga-api
+    type: configMap
+rawResources:
+  saga-api:
+    forceRename: saga-api
+    manifest:
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      spec:
+        advanced:
+          horizontalPodAutoscalerConfig:
+            behavior:
+              scaleDown:
+                stabilizationWindowSeconds: 60
+        cooldownPeriod: 60
+        maxReplicaCount: 5
+        minReplicaCount: 1
+        pollingInterval: 15
+        scaleTargetRef:
+          name: saga-api
+        triggers:
+        - metadata:
+            ignoreNullValues: 'true'
+            query: sum(rate(traefik_service_requests_total{service="temporal-saga-api-8000@kubernetes"}[1m]))
+            serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+            threshold: '1'
+          type: prometheus
+service:
+  saga-api:
+    controller: saga-api
+    forceRename: saga-api
+    ports:
+      http:
+        port: 8000
+        targetPort: http

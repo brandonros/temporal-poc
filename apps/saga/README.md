@@ -1,30 +1,36 @@
-# Order Saga
+# Saga
 
-Reserve inventory, charge a payment, create a shipment; compensate in reverse
-order on failure. `order_workflow.py` contains the workflow. `run.py` supplies
-simulated services backed by separate SQLite files and a command-line runner.
-
-With Python 3.11+ and `uv`, run these in separate terminals from this directory:
+The API accepts an order; the worker reserves inventory, charges a payment, and
+creates a shipment. These are simulated operations stored in the `saga` Postgres
+database. Both API and worker are deployed by Helmfile, using the `saga` task queue.
 
 ```bash
-temporal server start-dev
-uv run run.py worker --shipping-fault lost_reply
-uv run run.py start --id demo-001
+curl -i http://saga.127.0.0.1.sslip.io/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"order_id":"demo-001","shipping_fault":"lost_reply"}'
+
+curl http://saga.127.0.0.1.sslip.io/orders/demo-001
 ```
 
-The client prints `COMPENSATED` and exits with the original failure. Inspect
-history at http://localhost:8233. Omit `--shipping-fault` and use a new ID for
-success. `uv` reads the script's dependency declaration; no project setup needed.
+POST returns `202` with the order and workflow IDs. GET returns Temporal's
+execution status and the Saga state. State can be `null` while no worker is
+available to answer the query. Use a new order ID for each transaction; duplicate
+starts return `409` while Temporal retains the execution.
 
-For k3s, port-forward `svc/temporal-frontend` in namespace `temporal` to port 7233
-The scripts use the same `default` Temporal namespace as the scaling demo.
+Omit `shipping_fault` for success. `reject` fails before shipping commits;
+`lost_reply` commits but loses the response; `timeout` commits and stalls until
+Temporal times out the Activity. Watch retries and cleanup in Temporal's UI.
 
-Compensation stays inline: the caller waits for cleanup. Keys are registered
-before forward calls, so a lost reply cannot hide a committed resource. SQLite
-records make retries idempotent and reject late writes after compensation.
-These local transactions don't make real payment-provider calls atomic.
+Compensation stays in the order workflow and runs in reverse order. Keys are
+registered before forward calls. Postgres upserts serialize changes to each key,
+so duplicate calls are harmless and compensation prevents late forward writes.
+The records survive worker restarts and scale-to-zero. This database models
+service state; it does not make calls to real providers atomic.
 
-Forward Activities get three attempts; compensations get five. Cleanup continues
-if one compensation fails, then reports `MANUAL_REVIEW_REQUIRED` with the original
-cause. Cancellation waits for cleanup; termination bypasses it. There is no
-operator recovery system in this demo.
+Forward Activities get three attempts; compensations get five. Failed cleanup
+reports `MANUAL_REVIEW_REQUIRED` and preserves the original cause. Cancellation
+waits for cleanup; termination bypasses it. There is no operator recovery system.
+
+The demo reuses CNPG's generated application credentials for its separate database.
+Order IDs must remain unique beyond Temporal's history retention because the
+simulated operation records persist.

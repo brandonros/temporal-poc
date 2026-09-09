@@ -9,7 +9,7 @@ from temporalio.worker import Worker
 
 ADDRESS = os.getenv("TEMPORAL_ADDRESS", "temporal-frontend.temporal.svc.cluster.local:7233")
 NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
-TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "scaling")
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "greeter")
 GREET_SECONDS = float(os.getenv("GREET_SECONDS", "5"))
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_ACTIVITIES", "2"))
 

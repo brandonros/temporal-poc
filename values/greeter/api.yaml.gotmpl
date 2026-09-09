@@ -1,13 +1,13 @@
 configMaps:
-  scaling-api:
+  greeter-api:
     data:
       api.py: |
-{{ readFile "../../apps/scaling/api.py" | indent 8 }}
-    forceRename: scaling-api-src
+{{ readFile "../../apps/greeter/api.py" | indent 8 }}
+    forceRename: greeter-api-src
     includeChecksumInControllers:
-    - scaling-api
+    - greeter-api
 controllers:
-  scaling-api:
+  greeter-api:
     containers:
       api:
         args:
@@ -22,7 +22,7 @@ controllers:
           PYTHONUNBUFFERED: '1'
           TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
           TEMPORAL_NAMESPACE: default
-          TEMPORAL_TASK_QUEUE: scaling
+          TEMPORAL_TASK_QUEUE: greeter
         image:
           repository: python
           tag: 3.12-slim
@@ -43,33 +43,33 @@ controllers:
           requests:
             cpu: 50m
             memory: 128Mi
-    forceRename: scaling-api
+    forceRename: greeter-api
     replicas: null
     strategy: RollingUpdate
 ingress:
-  scaling-api:
+  greeter-api:
     className: traefik
-    forceRename: scaling-api
+    forceRename: greeter-api
     hosts:
-    - host: api.127.0.0.1.sslip.io
+    - host: greeter.127.0.0.1.sslip.io
       paths:
       - path: /
         pathType: Prefix
         service:
-          identifier: scaling-api
+          identifier: greeter-api
           port: http
 persistence:
-  scaling-api:
+  greeter-api:
     advancedMounts:
-      scaling-api:
+      greeter-api:
         api:
         - path: /app
           readOnly: true
-    identifier: scaling-api
+    identifier: greeter-api
     type: configMap
 rawResources:
-  scaling-api:
-    forceRename: scaling-api
+  greeter-api:
+    forceRename: greeter-api
     manifest:
       apiVersion: keda.sh/v1alpha1
       kind: ScaledObject
@@ -84,27 +84,27 @@ rawResources:
         minReplicaCount: 1
         pollingInterval: 15
         scaleTargetRef:
-          name: scaling-api
+          name: greeter-api
         triggers:
         - metadata:
             ignoreNullValues: 'true'
-            query: sum(rate(traefik_service_requests_total{service="temporal-scaling-api-8000@kubernetes"}[1m]))
+            query: sum(rate(traefik_service_requests_total{service="temporal-greeter-api-8000@kubernetes"}[1m]))
             serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
             threshold: '1'
           type: prometheus
 service:
-  scaling-api:
-    controller: scaling-api
-    forceRename: scaling-api
+  greeter-api:
+    controller: greeter-api
+    forceRename: greeter-api
     ports:
       http:
         port: 8000
         targetPort: http
 serviceMonitor:
-  scaling-api:
+  greeter-api:
     endpoints:
     - interval: 15s
       path: /metrics
       port: http
-    forceRename: scaling-api
-    serviceName: scaling-api
+    forceRename: greeter-api
+    serviceName: greeter-api
