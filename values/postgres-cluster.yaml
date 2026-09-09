@@ -1,6 +1,5 @@
 ---
-# Without this the chart appends "-cluster", renaming the Service and Secret
-# that values/temporal.yaml points at.
+# Keep Service and Secret names aligned with values/temporal.yaml.
 fullnameOverride: temporal-pg
 
 type: postgresql
@@ -10,11 +9,9 @@ version:
   postgresql: "18"
 
 cluster:
-  # Single-node cluster: extra replicas share the node's failure domain.
   instances: 1
 
-  # version.postgresql alone yields the floating tag `postgresql:18`. Pin the
-  # patch so an apply can't move the binary under an existing data directory.
+  # Pin the patch version; version.postgresql selects a floating major tag.
   imageName: ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie
 
   storage:

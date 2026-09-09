@@ -1,5 +1,0 @@
-apiVersion: v2
-name: scaling-demo
-description: Temporal workers and HTTP APIs (direct + Nexus), each autoscaled by KEDA
-type: application
-version: 0.1.0

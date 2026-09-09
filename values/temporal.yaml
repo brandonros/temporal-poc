@@ -20,15 +20,13 @@ server:
       datastores:
         default:
           sql:
-            # Correct for Postgres 18: the v12 schema directory covers 12+.
+            # The v12 schema covers Postgres 12+.
             pluginName: postgres12_pgx
             driverName: postgres12_pgx
             databaseName: temporal
             connectAddr: "temporal-pg-rw.temporal.svc.cluster.local:5432"
             connectProtocol: tcp
             user: temporal
-            # CNPG generates this Secret; the chart injects it as an env var, so
-            # the password is never written into values or the ConfigMap.
             existingSecret: temporal-pg-app
             secretKey: password
             # CNPG creates the databases; the chart only manages schema.
@@ -58,11 +56,6 @@ server:
       create: true
       namespace:
         - name: default
-          retention: 3d
-        - name: poc
-          retention: 7d
-        # Nexus caller lives here: it reaches `poc` only via the endpoint name.
-        - name: caller
           retention: 7d
 
   metrics:
@@ -111,7 +104,6 @@ web:
   ingress:
     enabled: true
     className: traefik
-    # This chart splits each entry on "/" into host + path.
     hosts:
       - temporal.127.0.0.1.sslip.io
   resources:

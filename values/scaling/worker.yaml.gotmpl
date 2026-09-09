@@ -1,0 +1,73 @@
+configMaps:
+  scaling-worker:
+    data:
+      worker.py: |
+{{ readFile "../../apps/scaling/worker.py" | indent 8 }}
+    forceRename: scaling-worker-src
+    includeChecksumInControllers:
+    - scaling-worker
+controllers:
+  scaling-worker:
+    containers:
+      worker:
+        args:
+        - pip install --no-cache-dir --quiet temporalio==1.18.1
+          && exec python /app/worker.py
+        command:
+        - /bin/sh
+        - -c
+        env:
+          GREET_SECONDS: '5'
+          MAX_CONCURRENT_ACTIVITIES: '2'
+          PYTHONUNBUFFERED: '1'
+          TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+          TEMPORAL_NAMESPACE: default
+          TEMPORAL_TASK_QUEUE: scaling
+        image:
+          repository: python
+          tag: 3.12-slim
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+    forceRename: scaling-worker
+    replicas: null
+    strategy: RollingUpdate
+persistence:
+  scaling-worker:
+    advancedMounts:
+      scaling-worker:
+        worker:
+        - path: /app
+          readOnly: true
+    identifier: scaling-worker
+    type: configMap
+rawResources:
+  scaling-worker:
+    forceRename: scaling-worker
+    manifest:
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      spec:
+        advanced:
+          horizontalPodAutoscalerConfig:
+            behavior:
+              scaleDown:
+                stabilizationWindowSeconds: 60
+        cooldownPeriod: 60
+        maxReplicaCount: 6
+        minReplicaCount: 0
+        pollingInterval: 15
+        scaleTargetRef:
+          name: scaling-worker
+        triggers:
+        - metadata:
+            activationTargetQueueSize: '0'
+            endpoint: temporal-frontend.temporal.svc.cluster.local:7233
+            namespace: default
+            queueTypes: workflow,activity
+            targetQueueSize: '5'
+            taskQueue: scaling
+          type: temporal

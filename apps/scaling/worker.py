@@ -1,8 +1,3 @@
-"""Temporal worker: runs GreetWorkflow off poc-task-queue.
-
-Deliberately slow and low-concurrency so a burst of requests builds a visible
-task-queue backlog for the KEDA temporal trigger to react to.
-"""
 import asyncio
 import logging
 import os
@@ -13,8 +8,8 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 ADDRESS = os.getenv("TEMPORAL_ADDRESS", "temporal-frontend.temporal.svc.cluster.local:7233")
-NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "poc")
-TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "poc-task-queue")
+NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "scaling")
 GREET_SECONDS = float(os.getenv("GREET_SECONDS", "5"))
 MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT_ACTIVITIES", "2"))
 

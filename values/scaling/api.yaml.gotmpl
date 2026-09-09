@@ -1,0 +1,110 @@
+configMaps:
+  scaling-api:
+    data:
+      api.py: |
+{{ readFile "../../apps/scaling/api.py" | indent 8 }}
+    forceRename: scaling-api-src
+    includeChecksumInControllers:
+    - scaling-api
+controllers:
+  scaling-api:
+    containers:
+      api:
+        args:
+        - pip install --no-cache-dir --quiet temporalio==1.18.1 aiohttp==3.13.2 prometheus-client==0.24.1
+          && exec python /app/api.py
+        command:
+        - /bin/sh
+        - -c
+        env:
+          GREET_TIMEOUT_SECONDS: '180'
+          PORT: '8000'
+          PYTHONUNBUFFERED: '1'
+          TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
+          TEMPORAL_NAMESPACE: default
+          TEMPORAL_TASK_QUEUE: scaling
+        image:
+          repository: python
+          tag: 3.12-slim
+        probes:
+          readiness:
+            custom: true
+            enabled: true
+            spec:
+              failureThreshold: 30
+              httpGet:
+                path: /healthz
+                port: http
+              initialDelaySeconds: 20
+              periodSeconds: 5
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+    forceRename: scaling-api
+    replicas: null
+    strategy: RollingUpdate
+ingress:
+  scaling-api:
+    className: traefik
+    forceRename: scaling-api
+    hosts:
+    - host: api.127.0.0.1.sslip.io
+      paths:
+      - path: /
+        pathType: Prefix
+        service:
+          identifier: scaling-api
+          port: http
+persistence:
+  scaling-api:
+    advancedMounts:
+      scaling-api:
+        api:
+        - path: /app
+          readOnly: true
+    identifier: scaling-api
+    type: configMap
+rawResources:
+  scaling-api:
+    forceRename: scaling-api
+    manifest:
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      spec:
+        advanced:
+          horizontalPodAutoscalerConfig:
+            behavior:
+              scaleDown:
+                stabilizationWindowSeconds: 60
+        cooldownPeriod: 60
+        maxReplicaCount: 5
+        minReplicaCount: 1
+        pollingInterval: 15
+        scaleTargetRef:
+          name: scaling-api
+        triggers:
+        - metadata:
+            ignoreNullValues: 'true'
+            query: sum(rate(traefik_service_requests_total{service="temporal-scaling-api-8000@kubernetes"}[1m]))
+            serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+            threshold: '1'
+          type: prometheus
+service:
+  scaling-api:
+    controller: scaling-api
+    forceRename: scaling-api
+    ports:
+      http:
+        port: 8000
+        targetPort: http
+serviceMonitor:
+  scaling-api:
+    endpoints:
+    - interval: 15s
+      path: /metrics
+      port: http
+    forceRename: scaling-api
+    serviceName: scaling-api

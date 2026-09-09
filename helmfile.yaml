@@ -1,9 +1,5 @@
 ---
-# k3s PoC infrastructure stack. See README.md.
-#
-# disableValidationOnInstall is on every release because helmfile diffs them all
-# before `needs:` installs anything, so on a first apply the CRDs don't exist yet
-# and the diff fails. It relaxes the preview only; the install still validates.
+# Skip diff validation on first install: dependency CRDs don't exist yet.
 
 repositories:
   - name: prometheus-community
@@ -14,6 +10,9 @@ repositories:
     url: https://cloudnative-pg.github.io/charts
   - name: temporalio
     url: https://go.temporal.io/helm-charts
+  - name: bjw-s-labs
+    url: ghcr.io/bjw-s-labs/helm
+    oci: true
 
 helmDefaults:
   wait: true
@@ -71,8 +70,7 @@ releases:
       - temporal/temporal-pg
     disableValidationOnInstall: true
     hooks:
-      # helm --wait can't track a Cluster CR, so the schema job would otherwise
-      # race Postgres.
+      # Helm doesn't wait for CNPG readiness; the schema job needs Postgres.
       - events: ["presync"]
         showlogs: true
         command: kubectl
@@ -84,9 +82,13 @@ releases:
           - temporal
           - --timeout=600s
 
-  - name: scaling-demo
+  - name: scaling
     namespace: temporal
-    chart: ./charts/scaling-demo
+    chart: bjw-s-labs/app-template
+    version: 5.1.0
+    values:
+      - values/scaling/api.yaml.gotmpl
+      - values/scaling/worker.yaml.gotmpl
     needs:
       - keda/keda
       - temporal/temporal

@@ -1,15 +1,3 @@
-"""Thin HTTP facade over Temporal.
-
-POST /greet {"name": "..."}  -> starts GreetWorkflow, waits for the result,
-returns it.
-
-The workflow is started by name, so this service shares no code with the worker.
-
-/metrics is scraped by the ServiceMonitor for observability only. KEDA does not
-read it: the ScaledObject queries Traefik's `traefik_service_requests_total`, so
-this deployment would autoscale identically with none of the instrumentation
-below.
-"""
 import asyncio
 import logging
 import os
@@ -21,8 +9,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, ge
 from temporalio.client import Client
 
 ADDRESS = os.getenv("TEMPORAL_ADDRESS", "temporal-frontend.temporal.svc.cluster.local:7233")
-NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "poc")
-TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "poc-task-queue")
+NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
+TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "scaling")
 PORT = int(os.getenv("PORT", "8000"))
 TIMEOUT = float(os.getenv("GREET_TIMEOUT_SECONDS", "180"))
 
