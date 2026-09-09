@@ -35,3 +35,23 @@ order-status id:
 # Remove Helm releases; database volumes remain.
 destroy:
     helmfile destroy
+
+# Send a bounded burst and report worker counts and request latency.
+demo-load count="30":
+    python3 scripts/demo.py load --requests "$1"
+
+# Wait for zero greeter workers before sending the burst.
+demo-cold count="30":
+    python3 scripts/demo.py load --requests "$1" --cold
+
+# Complete an order and inspect its persistent records.
+demo-order:
+    python3 scripts/demo.py order
+
+# Lose the shipping response and verify compensation.
+demo-rollback:
+    python3 scripts/demo.py rollback
+
+# Roll Saga workers after shipping commits, then verify recovery and cleanup.
+demo-restart:
+    python3 scripts/demo.py restart

@@ -30,6 +30,25 @@ Use a new order ID each time. Cold workers wait for KEDA polling and dependency 
 `just destroy` removes releases but retains database volumes and CRDs.
 `limactl delete -f k3s` removes the VM and its data.
 
+## Demos
+
+After `just apply`, run any of these with Python 3 available:
+
+```bash
+just demo-load                 # 30 greetings, worker counts and latency
+just demo-cold                 # wait for zero workers, then send the burst
+just demo-order                # successful order and persistent records
+just demo-rollback             # lost shipping response, retries and compensation
+just demo-restart              # roll workers after shipping commits, verify cleanup
+```
+
+The scripts use unique order IDs, bounded requests and polling deadlines, and exit
+nonzero on failure. Saga demos read Postgres through the worker's credentials and
+check duplicate-order rejection. `demo-restart` rolls all Saga worker replicas;
+run it without other Saga traffic. Cold-start waiting allows six minutes for KEDA
+and the Saga demos allow five minutes for completion. No demo resets the database
+or changes KEDA settings. These are live walkthroughs, not a test suite.
+
 ## UIs
 
 | UI | Address |
