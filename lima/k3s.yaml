@@ -16,7 +16,6 @@ provision:
     path: /etc/rancher/k3s/registries.yaml
     owner: root:root
     permissions: 600
-    # Preserve later updates made through `just registry-config`.
     overwrite: false
   - mode: system
     script: |

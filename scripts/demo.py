@@ -1,3 +1,5 @@
+"""Run live load, compensation, and restart checks against the deployed apps."""
+
 import argparse
 import concurrent.futures
 import json
