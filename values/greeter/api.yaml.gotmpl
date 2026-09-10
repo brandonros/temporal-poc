@@ -1,21 +1,8 @@
-configMaps:
-  greeter-api:
-    data:
-      api.py: |
-{{ readFile "../../apps/greeter/api.py" | indent 8 }}
-    forceRename: greeter-api-src
-    includeChecksumInControllers:
-    - greeter-api
 controllers:
   greeter-api:
     containers:
       api:
-        args:
-        - pip install --no-cache-dir --quiet temporalio==1.18.1 aiohttp==3.13.2 prometheus-client==0.24.1
-          && exec python /app/api.py
-        command:
-        - /bin/sh
-        - -c
+        command: ["python", "/app/api.py"]
         env:
           GREET_TIMEOUT_SECONDS: '180'
           PORT: '8000'
@@ -24,8 +11,8 @@ controllers:
           TEMPORAL_NAMESPACE: default
           TEMPORAL_TASK_QUEUE: greeter
         image:
-          repository: python
-          tag: 3.12-slim
+          repository: registry.127.0.0.1.sslip.io/greeter
+          tag: {{ exec "python3" (list "../../scripts/images.py" "tag" "greeter") | quote }}
         probes:
           readiness:
             custom: true
@@ -34,7 +21,7 @@ controllers:
               failureThreshold: 30
               httpGet:
                 path: /healthz
-                port: http
+                port: 8000
               initialDelaySeconds: 20
               periodSeconds: 5
         resources:
@@ -58,15 +45,6 @@ ingress:
         service:
           identifier: greeter-api
           port: http
-persistence:
-  greeter-api:
-    advancedMounts:
-      greeter-api:
-        api:
-        - path: /app
-          readOnly: true
-    identifier: greeter-api
-    type: configMap
 rawResources:
   greeter-api:
     forceRename: greeter-api
@@ -99,7 +77,7 @@ service:
     ports:
       http:
         port: 8000
-        targetPort: http
+        targetPort: 8000
 serviceMonitor:
   greeter-api:
     endpoints:

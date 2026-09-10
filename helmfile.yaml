@@ -2,6 +2,18 @@
 # Skip diff validation on first install: dependency CRDs don't exist yet.
 
 repositories:
+  - name: project-zot
+    url: https://zotregistry.dev/helm-charts
+  - name: traefik
+    url: https://traefik.github.io/charts
+  - name: seaweedfs
+    url: https://seaweedfs.github.io/seaweedfs/helm
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+  - name: grafana-community
+    url: https://grafana-community.github.io/helm-charts
+  - name: jetstack
+    url: https://charts.jetstack.io
   - name: prometheus-community
     url: https://prometheus-community.github.io/helm-charts
   - name: kedacore
@@ -22,12 +34,84 @@ helmDefaults:
   atomic: false
 
 releases:
+  # Infrastructure: ingress, storage, observability, and shared operators.
+  # Bundled k3s Traefik is disabled in lima/k3s.yaml.
+  - name: traefik
+    namespace: kube-system
+    chart: traefik/traefik
+    version: 41.5.0
+    values:
+      - values/infra/traefik.yaml
+    disableValidationOnInstall: true
+
   - name: kube-prometheus-stack
     namespace: monitoring
     chart: prometheus-community/kube-prometheus-stack
     version: 88.3.0
     values:
       - values/infra/kube-prometheus-stack.yaml
+    needs:
+      - kube-system/traefik
+    disableValidationOnInstall: true
+
+  - name: zot
+    namespace: registry
+    chart: project-zot/zot
+    version: 0.1.124
+    values:
+      - values/infra/zot.yaml
+    needs:
+      - kube-system/traefik
+    disableValidationOnInstall: true
+
+  - name: seaweedfs
+    namespace: storage
+    chart: seaweedfs/seaweedfs
+    version: 4.46.0
+    values:
+      - values/infra/seaweedfs.yaml
+    disableValidationOnInstall: true
+
+  - name: loki
+    namespace: monitoring
+    chart: grafana/loki
+    version: 7.3.0
+    values:
+      - values/infra/loki.yaml
+    needs:
+      - storage/seaweedfs
+    disableValidationOnInstall: true
+
+  - name: tempo
+    namespace: monitoring
+    chart: grafana-community/tempo
+    version: 2.3.0
+    values:
+      - values/infra/tempo.yaml
+    needs:
+      - storage/seaweedfs
+      - monitoring/kube-prometheus-stack
+    disableValidationOnInstall: true
+
+  - name: alloy
+    namespace: monitoring
+    chart: grafana/alloy
+    version: 1.12.1
+    values:
+      - values/infra/alloy.yaml
+    needs:
+      - monitoring/loki
+      - monitoring/tempo
+    disableValidationOnInstall: true
+
+  - name: cert-manager
+    namespace: cert-manager
+    chart: jetstack/cert-manager
+    version: v1.21.1
+    values:
+      - values/infra/cert-manager.yaml
+    needs:
+      - monitoring/kube-prometheus-stack
     disableValidationOnInstall: true
 
   - name: keda
@@ -50,14 +134,28 @@ releases:
       - monitoring/kube-prometheus-stack
     disableValidationOnInstall: true
 
+  - name: barman
+    namespace: cnpg-system
+    chart: cnpg/plugin-barman-cloud
+    version: 0.8.0
+    values:
+      - values/infra/barman.yaml
+    needs:
+      - cnpg-system/cnpg-operator
+      - cert-manager/cert-manager
+    disableValidationOnInstall: true
+
+  # Platform: a PostgreSQL instance and Temporal for the applications.
   - name: temporal-pg
     namespace: temporal
     chart: cnpg/cluster
     version: 0.8.1
     values:
-      - values/infra/postgres-cluster.yaml
+      - values/platform/postgres-cluster.yaml
     needs:
       - cnpg-system/cnpg-operator
+      - cnpg-system/barman
+      - storage/seaweedfs
     disableValidationOnInstall: true
 
   - name: temporal
@@ -65,7 +163,7 @@ releases:
     chart: temporalio/temporal
     version: 1.6.0
     values:
-      - values/infra/temporal.yaml
+      - values/platform/temporal.yaml
     needs:
       - temporal/temporal-pg
     disableValidationOnInstall: true
@@ -82,7 +180,10 @@ releases:
           - temporal
           - --timeout=600s
 
+  # Applications: APIs and workers consuming the platform services.
   - name: greeter
+    labels:
+      layer: application
     namespace: temporal
     chart: bjw-s-labs/app-template
     version: 5.1.0
@@ -92,9 +193,12 @@ releases:
     needs:
       - keda/keda
       - temporal/temporal
+      - registry/zot
     disableValidationOnInstall: true
 
   - name: saga
+    labels:
+      layer: application
     namespace: temporal
     chart: bjw-s-labs/app-template
     version: 5.1.0
@@ -104,4 +208,5 @@ releases:
     needs:
       - keda/keda
       - temporal/temporal
+      - registry/zot
     disableValidationOnInstall: true

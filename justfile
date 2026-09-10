@@ -9,12 +9,34 @@ init:
     #!/usr/bin/env bash
     set -eu
     helmfile init
-    limactl start --name=k3s --memory=8 template://k3s
+    limactl start --tty=false --name=k3s lima/k3s.yaml
     umask 077
     limactl shell k3s sudo cat /etc/rancher/k3s/k3s.yaml > "$KUBECONFIG"
 
+# Apply registry settings to an existing VM and restart k3s to load them.
+registry-config:
+    #!/usr/bin/env bash
+    set -eu
+    limactl shell k3s sudo install -d -m 0755 /etc/rancher/k3s
+    limactl shell k3s sudo tee /etc/rancher/k3s/registries.yaml < lima/registries.yaml > /dev/null
+    limactl shell k3s sudo chmod 600 /etc/rancher/k3s/registries.yaml
+    limactl shell k3s sudo systemctl restart k3s
+    limactl shell k3s sudo k3s kubectl wait node --all --for=condition=Ready --timeout=120s
+
+# Install dependencies, publish images, then install the applications.
 apply:
-    helmfile apply
+    just infra
+    just images
+    just apps
+
+infra:
+    helmfile --selector layer!=application sync
+
+images:
+    python3 scripts/images.py build
+
+apps:
+    helmfile --selector layer=application sync --skip-needs
 
 diff:
     helmfile diff

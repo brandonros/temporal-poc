@@ -9,8 +9,6 @@ monitoring:
   grafanaDashboard:
     create: true
     namespace: monitoring
-    labels:
-      grafana_dashboard: "1"
 
 resources:
   requests:

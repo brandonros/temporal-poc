@@ -54,4 +54,37 @@ databases:
     databaseReclaimPolicy: retain
 
 backups:
-  enabled: false
+  enabled: true
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  provider: s3
+  endpointURL: http://seaweedfs-all-in-one.storage.svc.cluster.local:8333
+  s3:
+    region: us-east-1
+    bucket: postgres-backups
+    accessKey: temporal-poc
+    secretKey: temporal-poc-local-s3
+  retentionPolicy: 7d
+  # SeaweedFS stores these locally; do not request AWS KMS/SSE encryption.
+  wal:
+    compression: gzip
+    encryption: ""
+  data:
+    compression: gzip
+    encryption: ""
+    jobs: 1
+  instanceSidecarConfiguration:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+  scheduledBackups:
+    - name: daily
+      schedule: "0 0 2 * * *"
+      backupOwnerReference: self
+      method: plugin
+      pluginConfiguration:
+        name: barman-cloud.cloudnative-pg.io

@@ -1,8 +1,14 @@
 version: v1.7.3
 dependencies:
+  - name: alloy
+    repository: https://grafana.github.io/helm-charts
+    version: 1.12.1
   - name: app-template
     repository: oci://ghcr.io/bjw-s-labs/helm
     version: 5.1.0
+  - name: cert-manager
+    repository: https://charts.jetstack.io
+    version: v1.21.1
   - name: cloudnative-pg
     repository: https://cloudnative-pg.github.io/charts
     version: 0.29.0
@@ -15,8 +21,26 @@ dependencies:
   - name: kube-prometheus-stack
     repository: https://prometheus-community.github.io/helm-charts
     version: 88.3.0
+  - name: loki
+    repository: https://grafana.github.io/helm-charts
+    version: 7.3.0
+  - name: plugin-barman-cloud
+    repository: https://cloudnative-pg.github.io/charts
+    version: 0.8.0
+  - name: seaweedfs
+    repository: https://seaweedfs.github.io/seaweedfs/helm
+    version: 4.46.0
+  - name: tempo
+    repository: https://grafana-community.github.io/helm-charts
+    version: 2.3.0
   - name: temporal
     repository: https://go.temporal.io/helm-charts
     version: 1.6.0
-digest: sha256:59ffb9c6de07b3a057b36de564c2c06dab22b1c38511ecad439f0d92011bb308
-generated: "2026-09-08T20:22:12.730475-04:00"
+  - name: traefik
+    repository: https://traefik.github.io/charts
+    version: 41.5.0
+  - name: zot
+    repository: https://zotregistry.dev/helm-charts
+    version: 0.1.124
+digest: sha256:7073308b8a81e1ff7f12e7fd30bac4b83a59959b6faa680e71854d3b90fbf234
+generated: "2026-09-10T10:35:07.186851-04:00"

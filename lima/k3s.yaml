@@ -1,0 +1,40 @@
+---
+minimumLimaVersion: 2.0.0
+base: template:_images/ubuntu-lts
+cpus: 4
+memory: 12GiB
+disk: 100GiB
+mounts: []
+containerd:
+  # Lima's separate containerd/BuildKit builds images; k3s uses its own runtime.
+  system: true
+  user: false
+provision:
+  # Data provisioning runs before the k3s installation script.
+  - mode: data
+    file: registries.yaml
+    path: /etc/rancher/k3s/registries.yaml
+    owner: root:root
+    permissions: 600
+    # Preserve later updates made through `just registry-config`.
+    overwrite: false
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -eu
+      # Helmfile owns Traefik. Keep k3s ServiceLB and local-path storage.
+      mkdir -p /etc/rancher/k3s
+      cat > /etc/rancher/k3s/config.yaml <<'K3S'
+      disable:
+        - traefik
+      write-kubeconfig-mode: "600"
+      K3S
+      if [ ! -d /var/lib/rancher/k3s ]; then
+        curl -fsSL https://get.k3s.io | sh -s - server
+      fi
+probes:
+  - script: |
+      #!/bin/sh
+      set -eu
+      sudo k3s kubectl wait node --all --for=condition=Ready --timeout=60s
+    hint: See `limactl shell k3s sudo journalctl -u k3s`.

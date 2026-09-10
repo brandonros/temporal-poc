@@ -1,0 +1,59 @@
+---
+replicas: 1
+# The chart's default config includes an OpenCensus receiver removed in Tempo.
+config: |
+  multitenancy_enabled: false
+  usage_report:
+    reporting_enabled: false
+  server:
+    http_listen_port: 3200
+  distributor:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+  compactor:
+    compaction:
+      block_retention: {{ .Values.tempo.retention }}
+  storage:
+    {{- toYaml .Values.tempo.storage | nindent 4 }}
+tempo:
+  reportingEnabled: false
+  memBallastSizeMbs: 0
+  retention: 168h
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  receivers:
+    opencensus: null
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  storage:
+    trace:
+      backend: s3
+      s3:
+        bucket: tempo
+        endpoint: seaweedfs-all-in-one.storage.svc.cluster.local:8333
+        region: us-east-1
+        access_key: temporal-poc
+        secret_key: temporal-poc-local-s3
+        insecure: true
+        forcepathstyle: true
+      wal:
+        path: /var/tempo/wal
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 5Gi
+serviceMonitor:
+  enabled: true

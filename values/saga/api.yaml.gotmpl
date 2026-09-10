@@ -1,20 +1,8 @@
-configMaps:
-  saga-api:
-    data:
-      api.py: |
-{{ readFile "../../apps/saga/api.py" | indent 8 }}
-    forceRename: saga-api-src
-    includeChecksumInControllers:
-    - saga-api
 controllers:
   saga-api:
     containers:
       api:
-        args:
-        - pip install --no-cache-dir --quiet temporalio==1.18.1 aiohttp==3.13.2 && exec python /app/api.py
-        command:
-        - /bin/sh
-        - -c
+        command: ["python", "/app/api.py"]
         env:
           PORT: '8000'
           PYTHONUNBUFFERED: '1'
@@ -22,8 +10,8 @@ controllers:
           TEMPORAL_NAMESPACE: default
           TEMPORAL_TASK_QUEUE: saga
         image:
-          repository: python
-          tag: 3.12-slim
+          repository: registry.127.0.0.1.sslip.io/saga
+          tag: {{ exec "python3" (list "../../scripts/images.py" "tag" "saga") | quote }}
         probes:
           readiness:
             custom: true
@@ -32,7 +20,7 @@ controllers:
               failureThreshold: 30
               httpGet:
                 path: /healthz
-                port: http
+                port: 8000
               initialDelaySeconds: 20
               periodSeconds: 5
         resources:
@@ -56,15 +44,6 @@ ingress:
         service:
           identifier: saga-api
           port: http
-persistence:
-  saga-api:
-    advancedMounts:
-      saga-api:
-        api:
-        - path: /app
-          readOnly: true
-    identifier: saga-api
-    type: configMap
 rawResources:
   saga-api:
     forceRename: saga-api
@@ -97,4 +76,4 @@ service:
     ports:
       http:
         port: 8000
-        targetPort: http
+        targetPort: 8000

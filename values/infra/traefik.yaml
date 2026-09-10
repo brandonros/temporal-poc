@@ -1,0 +1,43 @@
+---
+# k3s ServiceLB exposes ports 80/443; Lima forwards them to the host.
+service:
+  spec:
+    type: LoadBalancer
+
+ingressClass:
+  enabled: true
+  name: traefik
+  isDefaultClass: true
+
+providers:
+  kubernetesIngress:
+    ingressClass: traefik
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addServicesLabels: true
+    addEntryPointsLabels: true
+
+log:
+  format: json
+accessLog:
+  enabled: true
+  format: json
+
+tracing:
+  serviceName: traefik
+  sampleRate: 1.0
+  otlp:
+    enabled: true
+    grpc:
+      enabled: true
+      endpoint: alloy.monitoring.svc.cluster.local:4317
+      insecure: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi

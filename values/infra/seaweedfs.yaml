@@ -1,0 +1,47 @@
+---
+# One process and one persistent volume for this local lab.
+master:
+  enabled: false
+  volumeSizeLimitMB: 1024
+volume:
+  enabled: false
+filer:
+  enabled: false
+s3:
+  enabled: false
+  # Fixed local demo credentials, shared with Loki, Tempo, and CNPG.
+  credentials:
+    admin:
+      accessKey: temporal-poc
+      secretKey: temporal-poc-local-s3
+    read:
+      accessKey: temporal-poc-read
+      secretKey: temporal-poc-local-read
+
+allInOne:
+  enabled: true
+  replicas: 1
+  data:
+    type: persistentVolumeClaim
+    size: 40Gi
+    storageClass: local-path
+    annotations:
+      helm.sh/resource-policy: keep
+  extraEnvironmentVars:
+    WEED_LEVELDB2_ENABLED: "true"
+    WEED_LEVELDB2_DIR: /data/filerldb2
+  s3:
+    enabled: true
+    enableAuth: true
+    createBuckets:
+      - name: blobs
+      - name: loki-chunks
+      - name: loki-ruler
+      - name: tempo
+      - name: postgres-backups
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi

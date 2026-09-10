@@ -1,15 +1,25 @@
 # temporal-poc
 
 A playground for operating Temporal on k3s: durable workflows, autoscaling, and
-compensation. Helmfile installs Temporal, Postgres, KEDA, and monitoring.
+compensation. Helmfile installs the ingress, storage, observability, and application stack.
 
 - **Greeter:** an API starts a five-second workflow; KEDA scales its worker from zero.
 - **Saga:** an API starts a simulated order; its worker compensates partial failures.
   Operation records persist in Postgres. See [Saga details](apps/saga/README.md).
 
 Both have an API and worker, separate task queues, and the `default` Temporal namespace.
-Python lives in `apps/{greeter,saga}/`, app-template values in `values/{greeter,saga}/`,
-and shared infrastructure in `values/infra/`. Chart versions are pinned in `helmfile.yaml`.
+Python lives in `apps/{greeter,saga}/`. Releases and versions are in `helmfile.yaml`.
+
+| Layer | Configuration | Components |
+|---|---|---|
+| Kubernetes | `lima/k3s.yaml` | k3s, ServiceLB, local-path storage; bundled Traefik disabled |
+| Infrastructure | `values/infra/` | Traefik, Zot, SeaweedFS, Prometheus/Grafana, Loki, Tempo, Alloy, KEDA, cert-manager, CNPG operator, Barman plugin |
+| Platform | `values/platform/` | PostgreSQL with daily backups and WAL archiving; Temporal |
+| Applications | `values/{greeter,saga}/` | API and worker configuration |
+
+Alloy sends pod logs to Loki and OTLP traces to Tempo; both are provisioned in Grafana.
+Traefik exports ingress traces. Python workflow tracing needs application instrumentation.
+SeaweedFS holds blobs, logs, traces, and database backups in separate buckets.
 
 ## Run
 
@@ -22,9 +32,18 @@ just order demo-001 lost_reply
 just order-status demo-001
 ```
 
-`just` lists the commands. `just init` prepares an 8 GiB VM and writes a repo-local
+`just` lists the commands. `just init` prepares a 12 GiB VM and writes a repo-local
 `.kubeconfig`; recipes use it without changing your global Kubernetes config.
-Use a new order ID each time. Cold workers wait for KEDA polling and dependency installation.
+The Lima YAML applies to newly created VMs; existing VMs need bundled Traefik disabled
+before Helmfile can own it. Use a new order ID each time. Cold workers wait for
+KEDA polling and image pulls.
+
+`lima/registries.yaml` configures local registry pulls; `just registry-config`
+updates an existing VM and restarts k3s. Zot is exposed at
+`registry.127.0.0.1.sslip.io` over HTTP for this local lab.
+
+`just apply` installs infrastructure, builds and pushes source-tagged images with Lima
+BuildKit, then deploys the apps. `just infra`, `just images`, and `just apps` run each stage.
 
 `just diff` previews changes; `just status` shows pods and scaling resources.
 `just destroy` removes releases but retains database volumes and CRDs.
@@ -59,4 +78,5 @@ or changes KEDA settings. These are live walkthroughs, not a test suite.
 | Alertmanager | http://alertmanager.127.0.0.1.sslip.io |
 
 The hosts resolve to loopback. Temporal has TLS and authorization disabled,
-Grafana uses the chart's default password, and Postgres has one instance without backups.
+Grafana and S3 use local demo credentials. Postgres and its SeaweedFS backups share
+the same VM; deleting it removes both.

@@ -1,0 +1,15 @@
+---
+replicaCount: 1
+crds:
+  create: true
+# cert-manager issues the plugin's client and server certificates.
+certificate:
+  createIssuer: true
+  createClientCertificate: true
+  createServerCertificate: true
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

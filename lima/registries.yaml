@@ -1,0 +1,7 @@
+---
+# Local Zot ingress: containerd must use HTTP instead of its HTTPS default.
+# The hostname resolves to this VM's loopback; Traefik/ServiceLB must expose it.
+mirrors:
+  "registry.127.0.0.1.sslip.io":
+    endpoint:
+      - "http://registry.127.0.0.1.sslip.io"

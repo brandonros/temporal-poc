@@ -1,23 +1,8 @@
-configMaps:
-  saga-worker:
-    data:
-      worker.py: |
-{{ readFile "../../apps/saga/worker.py" | indent 8 }}
-      order_workflow.py: |
-{{ readFile "../../apps/saga/order_workflow.py" | indent 8 }}
-    forceRename: saga-worker-src
-    includeChecksumInControllers:
-    - saga-worker
 controllers:
   saga-worker:
     containers:
       worker:
-        args:
-        - pip install --no-cache-dir --quiet temporalio==1.18.1 'psycopg[binary]==3.2.10' && exec python
-          /app/worker.py
-        command:
-        - /bin/sh
-        - -c
+        command: ["python", "/app/worker.py"]
         env:
           PYTHONUNBUFFERED: '1'
           TEMPORAL_ADDRESS: temporal-frontend.temporal.svc.cluster.local:7233
@@ -32,8 +17,8 @@ controllers:
                 name: temporal-pg-app
                 key: password
         image:
-          repository: python
-          tag: 3.12-slim
+          repository: registry.127.0.0.1.sslip.io/saga
+          tag: {{ exec "python3" (list "../../scripts/images.py" "tag" "saga") | quote }}
         resources:
           limits:
             memory: 512Mi
@@ -43,15 +28,6 @@ controllers:
     forceRename: saga-worker
     replicas: null
     strategy: RollingUpdate
-persistence:
-  saga-worker:
-    advancedMounts:
-      saga-worker:
-        worker:
-        - path: /app
-          readOnly: true
-    identifier: saga-worker
-    type: configMap
 rawResources:
   saga-worker:
     forceRename: saga-worker

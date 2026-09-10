@@ -1,21 +1,8 @@
-configMaps:
-  greeter-worker:
-    data:
-      worker.py: |
-{{ readFile "../../apps/greeter/worker.py" | indent 8 }}
-    forceRename: greeter-worker-src
-    includeChecksumInControllers:
-    - greeter-worker
 controllers:
   greeter-worker:
     containers:
       worker:
-        args:
-        - pip install --no-cache-dir --quiet temporalio==1.18.1
-          && exec python /app/worker.py
-        command:
-        - /bin/sh
-        - -c
+        command: ["python", "/app/worker.py"]
         env:
           GREET_SECONDS: '5'
           MAX_CONCURRENT_ACTIVITIES: '2'
@@ -24,8 +11,8 @@ controllers:
           TEMPORAL_NAMESPACE: default
           TEMPORAL_TASK_QUEUE: greeter
         image:
-          repository: python
-          tag: 3.12-slim
+          repository: registry.127.0.0.1.sslip.io/greeter
+          tag: {{ exec "python3" (list "../../scripts/images.py" "tag" "greeter") | quote }}
         resources:
           limits:
             memory: 512Mi
@@ -35,15 +22,6 @@ controllers:
     forceRename: greeter-worker
     replicas: null
     strategy: RollingUpdate
-persistence:
-  greeter-worker:
-    advancedMounts:
-      greeter-worker:
-        worker:
-        - path: /app
-          readOnly: true
-    identifier: greeter-worker
-    type: configMap
 rawResources:
   greeter-worker:
     forceRename: greeter-worker

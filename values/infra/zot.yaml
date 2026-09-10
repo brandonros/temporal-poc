@@ -1,0 +1,25 @@
+---
+replicaCount: 1
+persistence: true
+pvc:
+  storage: 10Gi
+  storageClassName: local-path
+service:
+  type: ClusterIP
+  port: 5000
+ingress:
+  enabled: true
+  className: traefik
+  pathtype: Prefix
+  hosts:
+    - host: registry.127.0.0.1.sslip.io
+      paths:
+        - path: /
+mountConfig: true
+configFiles:
+  config.json: |
+    {
+      "storage": { "rootDirectory": "/var/lib/registry" },
+      "http": { "address": "0.0.0.0", "port": "5000", "readTimeout": "300s", "writeTimeout": "300s" },
+      "log": { "level": "info" }
+    }
