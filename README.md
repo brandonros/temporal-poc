@@ -20,7 +20,7 @@ builds and pushes app images to Zot, then deploys the apps.
 | Configuration | Contents |
 |---|---|
 | `lima/` | k3s, ServiceLB, local-path storage, registry settings; bundled Traefik disabled |
-| `values/infra/` | Traefik, Zot, SeaweedFS, Prometheus/Grafana, Loki, Tempo, Alloy, KEDA, cert-manager, CNPG, Barman |
+| [`values/infra/`](values/infra/README.md) | Shared infrastructure, grouped by responsibility; see the component guide |
 | `values/platform/` | Postgres with daily backups and WAL archiving; Temporal |
 | `values/{greeter,saga}/` | APIs and workers |
 
